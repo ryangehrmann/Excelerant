@@ -319,17 +319,17 @@ def screen_welcome():
         
         st.markdown("")
         
-        if st.button("🚀 Let's Begin", use_container_width=True, type="primary"):
+        if st.button("Let's Begin", use_container_width=True, type="primary"):
             navigate_to(Screen.UPLOAD_DATABASE)
-        
+
         st.markdown("")
-        
-        if st.button("ℹ️ About", use_container_width=True):
+
+        if st.button("About", use_container_width=True):
             navigate_to(Screen.ABOUT)
-        
+
         st.markdown("")
-        
-        if st.button("📖 Tutorial", use_container_width=True):
+
+        if st.button("Tutorial", use_container_width=True):
             navigate_to(Screen.TUTORIAL)
 
 
@@ -358,7 +358,7 @@ def screen_about():
     
     st.markdown("---")
     
-    if st.button("← Back", type="primary"):
+    if st.button("Back", type="primary"):
         navigate_to(Screen.WELCOME)
 
 
@@ -377,19 +377,19 @@ def screen_tutorial():
         """
     )
     
-    st.info("🎬 YouTube video will be embedded here")
+    st.info("YouTube video will be embedded here")
     
     st.markdown("#### Video 2: Configuring Transcriptions")
     
-    st.info("🎬 YouTube video will be embedded here")
+    st.info("YouTube video will be embedded here")
     
     st.markdown("#### Video 3: Phonological Analysis")
     
-    st.info("🎬 YouTube video will be embedded here")
+    st.info("YouTube video will be embedded here")
     
     st.markdown("---")
     
-    if st.button("← Back", type="primary"):
+    if st.button("Back", type="primary"):
         navigate_to(Screen.WELCOME)
 
 
@@ -409,7 +409,7 @@ def screen_upload_database():
         unsafe_allow_html=True,
     )
     
-    st.title("📂 Upload Lexical Database")
+    st.title("Upload Lexical Database")
     st.markdown("---")
     
     # Two-column layout (1/3 left, 2/3 right) - matching main menu
@@ -431,7 +431,7 @@ def screen_upload_database():
             if len(valid_sheets) == 0:
                 st.error(
                     """
-                    ❌ **No valid sheets found.**
+                    **No valid sheets found.**
                     
                     Your spreadsheet must have at least one sheet with these columns:
                     - `index`
@@ -445,12 +445,12 @@ def screen_upload_database():
             elif len(valid_sheets) == 1:
                 # Auto-select the only valid sheet
                 sheet_name = valid_sheets[0]
-                st.success(f"✅ Found valid sheet: **{sheet_name}**")
+                st.success(f"Found valid sheet: **{sheet_name}**")
                 
                 result = load_sheet(uploaded_file, sheet_name)
                 
                 if not result.success:
-                    st.error(f"❌ Error loading sheet: {result.error}")
+                    st.error(f"Error loading sheet: {result.error}")
                 else:
                     df = result.df
                     st.session_state._temp_df = df
@@ -463,10 +463,10 @@ def screen_upload_database():
                     validation = validate_database(df)
                     
                     if not validation.valid:
-                        st.error("❌ **Validation errors found. Please fix and re-upload.**")
+                        st.error("**Validation errors found. Please fix and re-upload.**")
                         
                         for col_name, issues in validation.errors.items():
-                            with st.expander(f"⚠️ Issues in '{col_name}' column ({len(issues)} errors)", expanded=True):
+                            with st.expander(f"Issues in '{col_name}' column ({len(issues)} errors)", expanded=True):
                                 if col_name == "index":
                                     st.markdown("All values in the `index` column must be integers.")
                                 else:
@@ -478,11 +478,11 @@ def screen_upload_database():
                                 if len(issues) > 20:
                                     st.text(f"  ... and {len(issues) - 20} more")
                     else:
-                        st.success("✅ Data validation passed")
+                        st.success("Data validation passed")
                         
                         st.markdown("---")
                         
-                        if st.button("✓ Load Database", type="primary", use_container_width=True):
+                        if st.button("Load Database", type="primary", use_container_width=True):
                             st.session_state.database = df
                             st.session_state.database_validated = True
                             st.session_state.database_filename = uploaded_file.name
@@ -493,12 +493,12 @@ def screen_upload_database():
                                 if key in st.session_state:
                                     del st.session_state[key]
                             
-                            st.success("✅ Database loaded!")
+                            st.success("Database loaded!")
                             navigate_to(Screen.MAIN_MENU)
             
             else:
                 # Multiple valid sheets - user must choose
-                st.warning(f"⚠️ Found {len(valid_sheets)} sheets with required columns. Please select one:")
+                st.warning(f"Found {len(valid_sheets)} sheets with required columns. Please select one:")
                 
                 selected_sheet = st.selectbox(
                     "Select sheet",
@@ -510,7 +510,7 @@ def screen_upload_database():
                     result = load_sheet(uploaded_file, selected_sheet)
                     
                     if not result.success:
-                        st.error(f"❌ Error loading sheet: {result.error}")
+                        st.error(f"Error loading sheet: {result.error}")
                     else:
                         df = result.df
                         st.session_state._temp_df = df
@@ -523,10 +523,10 @@ def screen_upload_database():
                         validation = validate_database(df)
                         
                         if not validation.valid:
-                            st.error("❌ **Validation errors found. Please fix and re-upload.**")
+                            st.error("**Validation errors found. Please fix and re-upload.**")
                             
                             for col_name, issues in validation.errors.items():
-                                with st.expander(f"⚠️ Issues in '{col_name}' column ({len(issues)} errors)", expanded=True):
+                                with st.expander(f"Issues in '{col_name}' column ({len(issues)} errors)", expanded=True):
                                     if col_name == "index":
                                         st.markdown("All values in the `index` column must be integers.")
                                     else:
@@ -538,11 +538,11 @@ def screen_upload_database():
                                     if len(issues) > 20:
                                         st.text(f"  ... and {len(issues) - 20} more")
                         else:
-                            st.success("✅ Data validation passed")
+                            st.success("Data validation passed")
                             
                             st.markdown("---")
                             
-                            if st.button("✓ Load Database", type="primary", use_container_width=True):
+                            if st.button("Load Database", type="primary", use_container_width=True):
                                 st.session_state.database = df
                                 st.session_state.database_validated = True
                                 st.session_state.database_filename = uploaded_file.name
@@ -553,12 +553,12 @@ def screen_upload_database():
                                     if key in st.session_state:
                                         del st.session_state[key]
                                 
-                                st.success("✅ Database loaded!")
+                                st.success("Database loaded!")
                                 navigate_to(Screen.MAIN_MENU)
         
         st.markdown("---")
         
-        if st.button("← Back to Welcome"):
+        if st.button("Back to Welcome"):
             navigate_to(Screen.WELCOME)
     
     with right_col:
@@ -591,12 +591,12 @@ def screen_upload_database():
             
             st.markdown("---")
             
-            with st.expander("📋 Columns", expanded=False):
+            with st.expander("Columns", expanded=False):
                 for col in df.columns:
-                    marker = "✓" if col in REQUIRED_COLUMNS else "·"
+                    marker = "*" if col in REQUIRED_COLUMNS else "-"
                     st.text(f"{marker} {col}")
             
-            with st.expander("📊 Data Preview", expanded=True):
+            with st.expander("Data Preview", expanded=True):
                 st.dataframe(df.head(10), use_container_width=True, height=300)
 
 
@@ -676,10 +676,10 @@ def screen_main_menu():
     with right_col:
         if st.session_state.selected_task is None:
             # No task selected - show hint, database options, then preview
-            st.info("👈 Select a task from the left panel to see details and begin.")
+            st.info("Select a task from the left panel to see details and begin.")
             
             # Database management
-            with st.expander("📂 Database Options"):
+            with st.expander("Database Options"):
                 if st.button("Replace Database", use_container_width=True):
                     navigate_to(Screen.UPLOAD_DATABASE)
                 
@@ -698,11 +698,11 @@ def screen_main_menu():
             df = st.session_state.database
             st.markdown(f"**Rows:** {len(df):,} · **Columns:** {len(df.columns)}")
             
-            with st.expander("📋 Columns", expanded=False):
+            with st.expander("Columns", expanded=False):
                 for col in df.columns:
                     st.text(f"• {col}")
             
-            with st.expander("📊 Data Preview", expanded=True):
+            with st.expander("Data Preview", expanded=True):
                 st.dataframe(df.head(10), use_container_width=True, height=300)
         
         else:
@@ -713,12 +713,12 @@ def screen_main_menu():
             col1, col2 = st.columns([1, 1])
             
             with col1:
-                if st.button("← Back to Preview", use_container_width=True):
+                if st.button("Back to Preview", use_container_width=True):
                     st.session_state.selected_task = None
                     st.rerun()
             
             with col2:
-                if st.button("Begin →", type="primary", use_container_width=True):
+                if st.button("Begin", type="primary", use_container_width=True):
                     # Navigate to task screen based on selected task
                     task_screens = {
                         "create_data_collection_script": Screen.TASK_CREATE_DATA_COLLECTION_SCRIPT,
@@ -750,9 +750,9 @@ def screen_main_menu():
             
             # Tutorial link
             if task.youtube_url:
-                st.markdown(f"🎬 [Watch Tutorial]({task.youtube_url})")
+                st.markdown(f"[Watch Tutorial]({task.youtube_url})")
             else:
-                st.markdown("🎬 *Tutorial video coming soon*")
+                st.markdown("*Tutorial video coming soon*")
 
 
 def screen_task_placeholder():
@@ -767,13 +767,13 @@ def screen_task_placeholder():
 
     st.markdown("---")
 
-    st.info("🚧 This task is not yet implemented.")
+    st.info("This task is not yet implemented.")
 
     st.markdown("This is where the task-specific interface will go.")
 
     st.markdown("---")
 
-    if st.button("← Back to Main Menu", type="primary"):
+    if st.button("Back to Main Menu", type="primary"):
         go_back_to_menu()
 
 
@@ -914,7 +914,7 @@ def screen_create_data_collection_script():
 
         st.markdown("")
 
-        if st.button("← Back to Main Menu", use_container_width=True):
+        if st.button("Back to Main Menu", use_container_width=True):
             go_back_to_menu()
 
     with output_col:
@@ -1268,7 +1268,7 @@ def screen_add_audio_links():
                     st.rerun()
 
         st.markdown("---")
-        if st.button("← Back to Main Menu", use_container_width=True):
+        if st.button("Back to Main Menu", use_container_width=True):
             # Clean up session state
             for key in ["_audio_file_paths", "_folder_analysis", "_filename_analysis", "_audio_link_result", "_audio_link_platform", "_audio_generate_params"]:
                 if key in st.session_state:
