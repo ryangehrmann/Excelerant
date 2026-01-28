@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+*.egg-info/
+dist/
+build/
+
+# Claude Code
+.claude/
+
+# Test files (don't include in repo)
+test*.xlsx
+filelist.txt
+test_audio/
+test_audio_orig/
+
+# Generated files
+*.bat
+!launch_excelerant.bat
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Streamlit
+.streamlit/secrets.toml
