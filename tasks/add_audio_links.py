@@ -633,7 +633,10 @@ def add_audio_links_acoustic(
         return AudioLinkResult(
             success=False,
             error="No audio files could be matched to database entries. "
-                  "Please check that filename index values match the index column."
+                  "Please check that: (1) the correct index column is selected, and "
+                  "(2) filename index values match the values in your database. "
+                  "If your database index values are incorrect, fix them in your Excel file, "
+                  "then clear the database and re-upload."
         )
 
     # Create new dataframe

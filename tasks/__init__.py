@@ -39,6 +39,26 @@ from .excel_export import (
     add_link_column,
     generate_excel_file,
     prepare_and_export,
+    export_database,
+)
+
+from .check_database_formatting import (
+    FORMATTING_REQUIRED_COLUMNS,
+    ColumnMappingResult,
+    ValidationError,
+    FormattingCheckResult,
+    detect_columns,
+    check_database_formatting,
+)
+
+from .explode_entries import (
+    ExplosionResult,
+    explode_entries,
+)
+
+from .segment_words import (
+    SegmentationResult,
+    segment_words,
 )
 
 __all__ = [
@@ -69,4 +89,18 @@ __all__ = [
     "add_link_column",
     "generate_excel_file",
     "prepare_and_export",
+    "export_database",
+    # check_database_formatting
+    "FORMATTING_REQUIRED_COLUMNS",
+    "ColumnMappingResult",
+    "ValidationError",
+    "FormattingCheckResult",
+    "detect_columns",
+    "check_database_formatting",
+    # explode_entries
+    "ExplosionResult",
+    "explode_entries",
+    # segment_words
+    "SegmentationResult",
+    "segment_words",
 ]

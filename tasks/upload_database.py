@@ -63,23 +63,33 @@ def find_valid_sheets(excel_file) -> list[str]:
 
 def load_sheet(excel_file, sheet_name: str) -> SheetLoadResult:
     """
-    Load a specific sheet and normalize column names.
-    
+    Load a specific sheet and normalize required column names only.
+
     Args:
         excel_file: Uploaded file object or path to Excel file
         sheet_name: Name of the sheet to load
-        
+
     Returns:
         SheetLoadResult with success status, DataFrame (if successful), and error message (if failed)
     """
     try:
         df = pd.read_excel(excel_file, sheet_name=sheet_name)
-        
-        # Normalize column names (lowercase, stripped)
-        df.columns = [col.lower().strip() for col in df.columns]
-        
+
+        # Strip whitespace from all column names
+        df.columns = [col.strip() if isinstance(col, str) else col for col in df.columns]
+
+        # Only normalize required columns to lowercase (preserve case for others like P, R, C, M, V, F, T)
+        rename_map = {}
+        for col in df.columns:
+            if isinstance(col, str) and col.lower() in [r.lower() for r in REQUIRED_COLUMNS]:
+                if col != col.lower():
+                    rename_map[col] = col.lower()
+
+        if rename_map:
+            df = df.rename(columns=rename_map)
+
         return SheetLoadResult(success=True, df=df)
-    
+
     except Exception as e:
         return SheetLoadResult(success=False, error=str(e))
 

@@ -31,7 +31,14 @@ from tasks import (
     analyze_filenames,
     validate_delimiter_consistency,
     add_audio_links,
-    prepare_and_export,
+    export_database,
+    FORMATTING_REQUIRED_COLUMNS,
+    detect_columns,
+    check_database_formatting,
+    ExplosionResult,
+    explode_entries,
+    SegmentationResult,
+    segment_words,
 )
 
 
@@ -108,35 +115,37 @@ TASKS = {
         id="explode_entries",
         name="Explode Entries",
         category="Configure Transcriptions",
-        description="Split multi-word entries into separate rows while preserving the original entry reference. Useful for analyzing individual words in phrases.",
+        description="Split multi-word entries into one-word-per-row. Adds 'sub_index' (word position) and 'word' columns. Cleans whitespace and punctuation from entry transcriptions before splitting.",
         requirements=[
+            "Database must have 'index' and 'entry' columns",
             "Entries with multiple words separated by spaces",
         ],
-        example="Input: 'big house' (1 row)\nOutput: 'big', 'house' (2 rows, linked to original)",
+        example="Input: 'big house' (1 row)\nOutput: 'big', 'house' (2 rows with sub_index 1, 2)",
         youtube_url=None,
     ),
     "segment_words": TaskInfo(
         id="segment_words",
         name="Segment Words",
         category="Configure Transcriptions",
-        description="Break words into individual segments (phonemes) for detailed phonological analysis. Each segment gets its own column or row.",
+        description="Break IPA-transcribed words into phonological columns: P (presyllable onset), R (presyllable rime), C (onset), M (medial), V (vowel), F (coda), T (tone/register). Non-IPA words are marked as errors without blocking.",
         requirements=[
-            "IPA transcriptions in database",
-            "Syllable boundary markers (optional)",
+            "Database must have a 'word' column with IPA transcriptions",
+            "Run 'Explode Entries' first if entries contain multiple words",
         ],
-        example="Input: '/káːw/'\nOutput: ['k', 'áː', 'w']",
+        example="Input: 'kʰaːw¹'\nOutput: C='kʰ', V='aː', F='w', T='1'",
         youtube_url=None,
     ),
     "update_entries_from_words": TaskInfo(
         id="update_entries_from_words",
         name="Check Database Formatting & Update Entries",
         category="Configure Transcriptions",
-        description="Propagate changes made at the word level back to the original entries. Sync edits after working with exploded data.",
+        description="Validate database formatting and reconstruct entries from words. Checks for proper data types, unique index+sub_index pairs, sequential sub_indices, and rebuilds entries by joining words in order.",
         requirements=[
-            "Previously exploded entries",
-            "Edits made to word-level data",
+            "Database must have 'index', 'sub_index', 'entry', 'gloss', and 'word' columns",
+            "Each index+sub_index combination must be unique",
+            "Sub_indices must be sequential within each index (auto-fixed if possible)",
         ],
-        example="Input: Edited words\nOutput: Updated original entries",
+        example="Input: Words with sub_indices\nOutput: Validated data with reconstructed entries",
         youtube_url=None,
     ),
     
@@ -250,6 +259,9 @@ class Screen:
     TASK_PLACEHOLDER = "task_placeholder"
     TASK_CREATE_DATA_COLLECTION_SCRIPT = "task_create_data_collection_script"
     TASK_ADD_AUDIO_LINKS = "task_add_audio_links"
+    TASK_UPDATE_ENTRIES_FROM_WORDS = "task_update_entries_from_words"
+    TASK_EXPLODE_ENTRIES = "task_explode_entries"
+    TASK_SEGMENT_WORDS = "task_segment_words"
 
 
 def init_session_state():
@@ -463,25 +475,28 @@ def screen_upload_database():
                     validation = validate_database(df)
                     
                     if not validation.valid:
-                        st.error("**Validation errors found. Please fix and re-upload.**")
-                        
+                        st.error("**Validation errors found.**")
+
                         for col_name, issues in validation.errors.items():
                             with st.expander(f"Issues in '{col_name}' column ({len(issues)} errors)", expanded=True):
                                 if col_name == "index":
                                     st.markdown("All values in the `index` column must be integers.")
                                 else:
                                     st.markdown(f"All values in the `{col_name}` column must be non-empty strings.")
-                                
+
                                 st.markdown("**Problematic rows:**")
                                 for issue in issues[:20]:  # Show max 20
-                                    st.text(f"  • {issue}")
+                                    st.text(f"  {issue}")
                                 if len(issues) > 20:
                                     st.text(f"  ... and {len(issues) - 20} more")
+
+                        st.markdown("---")
+                        st.info("Please fix these issues in your Excel file, then upload the corrected file above.")
                     else:
                         st.success("Data validation passed")
-                        
+
                         st.markdown("---")
-                        
+
                         if st.button("Load Database", type="primary", use_container_width=True):
                             st.session_state.database = df
                             st.session_state.database_validated = True
@@ -498,17 +513,22 @@ def screen_upload_database():
             
             else:
                 # Multiple valid sheets - user must choose
-                st.warning(f"Found {len(valid_sheets)} sheets with required columns. Please select one:")
-                
+                st.info(f"Found {len(valid_sheets)} sheets with required columns. Please select one:")
+
+                # Add placeholder option
+                sheet_options = ["- Select a sheet -"] + valid_sheets
+
                 selected_sheet = st.selectbox(
                     "Select sheet",
-                    options=valid_sheets,
+                    options=sheet_options,
+                    index=0,
                     help="Choose the sheet containing your lexical data"
                 )
-                
-                if selected_sheet:
+
+                # Only validate if user has selected a real sheet (not placeholder)
+                if selected_sheet != "- Select a sheet -":
                     result = load_sheet(uploaded_file, selected_sheet)
-                    
+
                     if not result.success:
                         st.error(f"Error loading sheet: {result.error}")
                     else:
@@ -516,43 +536,46 @@ def screen_upload_database():
                         st.session_state._temp_df = df
                         st.session_state._temp_filename = uploaded_file.name
                         st.session_state._temp_sheet = selected_sheet
-                        
+
                         st.markdown(f"**Rows:** {len(df):,} · **Columns:** {len(df.columns)}")
-                        
+
                         # Validate the data
                         validation = validate_database(df)
-                        
+
                         if not validation.valid:
-                            st.error("**Validation errors found. Please fix and re-upload.**")
-                            
+                            st.error("**Validation errors found.**")
+
                             for col_name, issues in validation.errors.items():
                                 with st.expander(f"Issues in '{col_name}' column ({len(issues)} errors)", expanded=True):
                                     if col_name == "index":
                                         st.markdown("All values in the `index` column must be integers.")
                                     else:
                                         st.markdown(f"All values in the `{col_name}` column must be non-empty strings.")
-                                    
+
                                     st.markdown("**Problematic rows:**")
                                     for issue in issues[:20]:  # Show max 20
-                                        st.text(f"  • {issue}")
+                                        st.text(f"  {issue}")
                                     if len(issues) > 20:
                                         st.text(f"  ... and {len(issues) - 20} more")
+
+                            st.markdown("---")
+                            st.info("Please fix these issues in your Excel file, then upload the corrected file above.")
                         else:
                             st.success("Data validation passed")
-                            
+
                             st.markdown("---")
-                            
+
                             if st.button("Load Database", type="primary", use_container_width=True):
                                 st.session_state.database = df
                                 st.session_state.database_validated = True
                                 st.session_state.database_filename = uploaded_file.name
                                 st.session_state.database_sheet_name = selected_sheet
-                                
+
                                 # Clean up temp state
                                 for key in ["_temp_df", "_temp_filename", "_temp_sheet"]:
                                     if key in st.session_state:
                                         del st.session_state[key]
-                                
+
                                 st.success("Database loaded!")
                                 navigate_to(Screen.MAIN_MENU)
         
@@ -680,9 +703,18 @@ def screen_main_menu():
             
             # Database management
             with st.expander("Database Options"):
+                # Download current database
+                st.download_button(
+                    label="Download Database",
+                    data=export_database(st.session_state.database),
+                    file_name="database.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True,
+                )
+
                 if st.button("Replace Database", use_container_width=True):
                     navigate_to(Screen.UPLOAD_DATABASE)
-                
+
                 if st.button("Clear Database & Start Over", use_container_width=True):
                     st.session_state.database = None
                     st.session_state.database_validated = False
@@ -723,6 +755,9 @@ def screen_main_menu():
                     task_screens = {
                         "create_data_collection_script": Screen.TASK_CREATE_DATA_COLLECTION_SCRIPT,
                         "add_audio_links": Screen.TASK_ADD_AUDIO_LINKS,
+                        "update_entries_from_words": Screen.TASK_UPDATE_ENTRIES_FROM_WORDS,
+                        "explode_entries": Screen.TASK_EXPLODE_ENTRIES,
+                        "segment_words": Screen.TASK_SEGMENT_WORDS,
                     }
                     target_screen = task_screens.get(task.id, Screen.TASK_PLACEHOLDER)
                     navigate_to(target_screen)
@@ -939,7 +974,19 @@ def screen_create_data_collection_script():
                 )
 
             if not result.success:
-                st.error(f"Error: {result.error}")
+                st.error(f"**Error:** {result.error}")
+
+                st.markdown("---")
+
+                if st.button("Clear Database & Start Over", type="primary", use_container_width=True):
+                    if "_generated_script" in st.session_state:
+                        del st.session_state._generated_script
+                    st.session_state.database = None
+                    st.session_state.database_validated = False
+                    st.session_state.database_filename = None
+                    st.session_state.database_sheet_name = None
+                    st.session_state.selected_task = None
+                    navigate_to(Screen.UPLOAD_DATABASE)
             else:
                 # Store result in session state and rerun to scroll to top
                 st.session_state._generated_script = result.script
@@ -1304,7 +1351,20 @@ def screen_add_audio_links():
                 st.session_state.database_validated = True
                 st.rerun()
             else:
-                st.error(result.error)
+                st.error(f"**Error:** {result.error}")
+
+                st.markdown("---")
+
+                if st.button("Clear Database & Start Over", type="primary", use_container_width=True):
+                    for key in ["_audio_file_paths", "_folder_analysis", "_filename_analysis", "_audio_link_result", "_audio_link_platform", "_audio_generate_params"]:
+                        if key in st.session_state:
+                            del st.session_state[key]
+                    st.session_state.database = None
+                    st.session_state.database_validated = False
+                    st.session_state.database_filename = None
+                    st.session_state.database_sheet_name = None
+                    st.session_state.selected_task = None
+                    navigate_to(Screen.UPLOAD_DATABASE)
 
         # Show result if available
         if "_audio_link_result" in st.session_state:
@@ -1328,18 +1388,9 @@ def screen_add_audio_links():
             with btn_col1:
                 # Download updated database with formatting
                 platform = st.session_state.get('_audio_link_platform', 'windows')
-                excel_data = prepare_and_export(
-                    df=result.df,
-                    path_col='path',
-                    gloss_col='gloss',
-                    add_links=False,  # Links already added by add_audio_links
-                    reorder=True,
-                    platform=platform,
-                )
-
                 st.download_button(
                     label="Download Updated Database",
-                    data=excel_data,
+                    data=export_database(result.df, platform=platform),
                     file_name="database_with_audio.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     type="primary",
@@ -1453,6 +1504,866 @@ def screen_add_audio_links():
             st.dataframe(example_after, use_container_width=True, hide_index=True)
 
 
+def screen_update_entries_from_words():
+    """Screen for checking database formatting and updating entries from words."""
+
+    # Add vertical divider CSS
+    st.markdown(
+        """
+        <style>
+        div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:first-child {
+            border-right: 1px solid #ccc;
+            padding-right: 1.5rem !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.title("Check Database Formatting & Update Entries")
+    st.markdown("---")
+
+    # Two-column layout
+    config_col, output_col = st.columns([1, 2])
+
+    df = st.session_state.database
+    columns = list(df.columns)
+
+    with config_col:
+        st.subheader("Column Detection")
+
+        # Detect columns
+        detection = detect_columns(df)
+
+        if detection.success:
+            st.success("All required columns found!")
+
+            # Show detected columns
+            st.markdown("**Detected columns:**")
+            for req_col, actual_col in detection.column_mapping.items():
+                if req_col == actual_col:
+                    st.text(f"  {req_col}")
+                else:
+                    st.text(f"  {req_col} (from '{actual_col}')")
+
+            if detection.normalized_columns:
+                st.info(f"Column names will be normalized to lowercase: {', '.join(detection.normalized_columns)}")
+
+            st.markdown("---")
+
+            # Categorical columns selection
+            st.markdown("**Additional Categorical Columns (Optional)**")
+            st.caption(
+                "If your data has multiple speakers or multiple tokens of the same word list item, "
+                "select those columns here. They will be included in uniqueness checks and grouping."
+            )
+
+            # Get available columns (excluding required ones)
+            available_cat_cols = [col for col in columns if col.lower() not in
+                                  [r.lower() for r in FORMATTING_REQUIRED_COLUMNS]]
+
+            categorical_columns = st.multiselect(
+                "Select categorical columns",
+                options=available_cat_cols,
+                default=[],
+                help="Columns like 'speaker', 'token', etc.",
+                key="cat_cols_detected",
+            )
+
+            st.markdown("---")
+
+            # Process button
+            process_clicked = st.button(
+                "Check Formatting & Update Entries",
+                type="primary",
+                use_container_width=True,
+            )
+
+            if process_clicked:
+                st.session_state._formatting_check_params = {
+                    "column_mapping": detection.column_mapping,
+                    "categorical_columns": categorical_columns if categorical_columns else None,
+                }
+                st.rerun()
+
+        else:
+            st.warning(f"Missing required columns: {', '.join(detection.missing_columns)}")
+
+            st.markdown("**Please map the missing columns:**")
+
+            # Build column mapping with user input for missing columns
+            user_mapping = {}
+
+            for req_col in FORMATTING_REQUIRED_COLUMNS:
+                if req_col in detection.column_mapping:
+                    # Already found
+                    actual_col = detection.column_mapping[req_col]
+                    if req_col == actual_col:
+                        st.text(f"  {req_col} - found")
+                    else:
+                        st.text(f"  {req_col} - found (as '{actual_col}')")
+                    user_mapping[req_col] = actual_col
+                else:
+                    # Need user to select
+                    selected = st.selectbox(
+                        f"Select column for '{req_col}'",
+                        options=["-none-"] + columns,
+                        key=f"col_map_{req_col}",
+                    )
+                    if selected != "-none-":
+                        user_mapping[req_col] = selected
+
+            # Check if all columns are now mapped
+            all_mapped = len(user_mapping) == len(FORMATTING_REQUIRED_COLUMNS)
+
+            st.markdown("---")
+
+            # Categorical columns selection
+            st.markdown("**Additional Categorical Columns (Optional)**")
+            st.caption(
+                "If your data has multiple speakers or multiple tokens of the same word list item, "
+                "select those columns here. They will be included in uniqueness checks and grouping."
+            )
+
+            # Get available columns (excluding required ones and already mapped ones)
+            mapped_cols = set(user_mapping.values())
+            available_cat_cols = [col for col in columns if col not in mapped_cols and
+                                  col.lower() not in [r.lower() for r in FORMATTING_REQUIRED_COLUMNS]]
+
+            categorical_columns = st.multiselect(
+                "Select categorical columns",
+                options=available_cat_cols,
+                default=[],
+                help="Columns like 'speaker', 'token', etc.",
+                key="cat_cols_manual",
+            )
+
+            st.markdown("---")
+
+            process_clicked = st.button(
+                "Check Formatting & Update Entries",
+                type="primary",
+                use_container_width=True,
+                disabled=not all_mapped,
+            )
+
+            if not all_mapped:
+                st.caption("Please select a column for each required field.")
+
+            if process_clicked and all_mapped:
+                st.session_state._formatting_check_params = {
+                    "column_mapping": user_mapping,
+                    "categorical_columns": categorical_columns if categorical_columns else None,
+                }
+                st.rerun()
+
+        st.markdown("---")
+
+        if st.button("Back to Main Menu", use_container_width=True):
+            # Clean up session state
+            for key in ["_formatting_check_params", "_formatting_check_result"]:
+                if key in st.session_state:
+                    del st.session_state[key]
+            go_back_to_menu()
+
+    # === OUTPUT COLUMN ===
+    with output_col:
+        st.subheader("Output")
+
+        # Process if triggered
+        if "_formatting_check_params" in st.session_state:
+            params = st.session_state._formatting_check_params
+            del st.session_state._formatting_check_params
+
+            with st.spinner("Checking database formatting..."):
+                result = check_database_formatting(
+                    df=df,
+                    column_mapping=params["column_mapping"],
+                    categorical_columns=params.get("categorical_columns"),
+                )
+
+            if result.success:
+                st.session_state._formatting_check_result = result
+                st.session_state._scroll_to_top = True
+                st.session_state.database = result.df
+                st.session_state.database_validated = True
+                st.rerun()
+            else:
+                # Store error result for display
+                st.session_state._formatting_check_result = result
+                st.rerun()
+
+        # Display result if available
+        if "_formatting_check_result" in st.session_state:
+            result = st.session_state._formatting_check_result
+
+            if result.success:
+                st.success("Database formatting validated and entries updated!")
+
+                # Show summary
+                cat_cols = result.summary.get('categorical_columns', [])
+                cat_cols_text = f"- Categorical columns: {', '.join(cat_cols)}" if cat_cols else ""
+
+                summary_text = f"""
+                **Summary:**
+                - Total rows: {result.summary.get('total_rows', 'N/A')}
+                - Unique indices: {result.summary.get('unique_indices', 'N/A')}
+                - Auto-fixes applied: {result.summary.get('auto_fixes_count', 0)}
+                """
+                if cat_cols_text:
+                    summary_text += f"\n                {cat_cols_text}"
+
+                st.markdown(summary_text)
+
+                # Show auto-fixes if any
+                if result.auto_fixes_applied:
+                    with st.expander("Auto-fixes applied", expanded=False):
+                        st.markdown(
+                            "The following sub_index sequences were renumbered to start at 1:"
+                        )
+                        for fix in result.auto_fixes_applied[:20]:
+                            st.text(f"  {fix}")
+                        if len(result.auto_fixes_applied) > 20:
+                            st.text(f"  ... and {len(result.auto_fixes_applied) - 20} more")
+
+                st.markdown("---")
+
+                # Buttons row
+                btn_col1, btn_col2 = st.columns(2)
+
+                with btn_col1:
+                    # Download updated database
+                    st.download_button(
+                        label="Download Updated Database",
+                        data=export_database(result.df),
+                        file_name="database_formatted.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        type="primary",
+                        use_container_width=True,
+                    )
+
+                with btn_col2:
+                    if st.button("Return to Main Menu", use_container_width=True, key="return_after_format"):
+                        for key in ["_formatting_check_params", "_formatting_check_result"]:
+                            if key in st.session_state:
+                                del st.session_state[key]
+                        go_back_to_menu()
+
+                st.markdown("---")
+
+                st.markdown("**Updated Database Preview:**")
+                # Show key columns: index, sub_index, word, entry_orig, entry, gloss
+                preview_cols = []
+                col_priority = ['index', 'sub_index', 'word', 'entry_orig', 'entry', 'gloss']
+                for col in col_priority:
+                    if col in result.df.columns:
+                        preview_cols.append(col)
+
+                if preview_cols:
+                    st.dataframe(result.df[preview_cols].head(20), use_container_width=True)
+                else:
+                    st.dataframe(result.df.head(20), use_container_width=True)
+
+            else:
+                # Show error
+                error = result.error
+
+                st.error(f"**Validation Error:** {error.message}")
+
+                st.markdown("---")
+
+                st.markdown("**Details:**")
+                for detail in error.details:
+                    st.text(f"  {detail}")
+
+                st.markdown("---")
+
+                st.markdown("**Recommendation:**")
+                st.info(error.recommendation)
+
+                st.markdown("---")
+
+                if st.button("Clear Database & Start Over", type="primary", use_container_width=True):
+                    # Clean up session state
+                    for key in ["_formatting_check_params", "_formatting_check_result"]:
+                        if key in st.session_state:
+                            del st.session_state[key]
+                    st.session_state.database = None
+                    st.session_state.database_validated = False
+                    st.session_state.database_filename = None
+                    st.session_state.database_sheet_name = None
+                    st.session_state.selected_task = None
+                    navigate_to(Screen.UPLOAD_DATABASE)
+
+        else:
+            # Initial state - show instructions
+            st.info("Click **Check Formatting & Update Entries** to validate your database and reconstruct entries from words.")
+
+            st.markdown("---")
+
+            st.markdown("**About This Task**")
+            st.markdown(
+                """
+                This task validates your database formatting and reconstructs entries from individual words.
+
+                **Validation checks:**
+                - No blank values in index, sub_index, entry, or word columns
+                - Index values must be integers
+                - Sub_index values must be integers
+                - Entry and word values must be strings
+                - Each index + sub_index (+ categorical columns) combination must be unique
+                - Sub_indices must be sequential (1, 2, 3...) within each group
+
+                **Categorical columns:**
+                If your data has multiple speakers or multiple tokens of the same word list item,
+                select those columns. They will be included in uniqueness checks and used for
+                grouping when reconstructing entries.
+
+                **Auto-fix:**
+                If sub_indices are unique but don't start at 1 or have gaps, they will be
+                automatically renumbered (e.g., 3, 5, 7 becomes 1, 2, 3).
+
+                **Output:**
+                - Original 'entry' column is preserved as 'entry_orig'
+                - New 'entry' column is created by joining words in sub_index order per group
+                """
+            )
+
+            st.markdown("---")
+
+            st.markdown("**Example:**")
+
+            example_before = pd.DataFrame({
+                'index': [1, 1, 1, 2, 2],
+                'sub_index': [1, 2, 3, 1, 2],
+                'word': ['the', 'big', 'dog', 'a', 'cat'],
+                'entry': ['the big dog', 'the big dog', 'the big dog', 'a cat', 'a cat'],
+                'gloss': ['animal', 'animal', 'animal', 'animal', 'animal'],
+            })
+            st.markdown("**Before:**")
+            st.dataframe(example_before, use_container_width=True, hide_index=True)
+
+            example_after = pd.DataFrame({
+                'index': [1, 1, 1, 2, 2],
+                'sub_index': [1, 2, 3, 1, 2],
+                'word': ['the', 'big', 'dog', 'a', 'cat'],
+                'entry_orig': ['the big dog', 'the big dog', 'the big dog', 'a cat', 'a cat'],
+                'entry': ['the big dog', 'the big dog', 'the big dog', 'a cat', 'a cat'],
+                'gloss': ['animal', 'animal', 'animal', 'animal', 'animal'],
+            })
+            st.markdown("**After (entry reconstructed from words):**")
+            st.dataframe(example_after[['index', 'sub_index', 'word', 'entry_orig', 'entry']], use_container_width=True, hide_index=True)
+
+
+def screen_explode_entries():
+    """Screen for splitting multi-word entries into one-word-per-row."""
+
+    # Add vertical divider CSS
+    st.markdown(
+        """
+        <style>
+        div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:first-child {
+            border-right: 1px solid #ccc;
+            padding-right: 1.5rem !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.title("Explode Entries")
+    st.markdown("---")
+
+    # Two-column layout
+    config_col, output_col = st.columns([1, 2])
+
+    df = st.session_state.database
+    columns = list(df.columns)
+
+    with config_col:
+        st.subheader("Configuration")
+
+        # Auto-detect entry column (case-insensitive)
+        entry_col = None
+        for col in columns:
+            if col.lower() == 'entry':
+                entry_col = col
+                break
+
+        if entry_col:
+            st.success(f"Entry column detected: **{entry_col}**")
+        else:
+            entry_col = st.selectbox(
+                "Select entry column",
+                options=columns,
+                help="Column containing multi-word transcriptions to split",
+            )
+
+        # Auto-detect gloss column
+        gloss_col = None
+        for col in columns:
+            if col.lower() == 'gloss':
+                gloss_col = col
+                break
+
+        if gloss_col:
+            st.markdown(f"Gloss column detected: **{gloss_col}**")
+        else:
+            gloss_col = st.selectbox(
+                "Select gloss column",
+                options=["-none-"] + columns,
+                help="Column containing glosses/meanings",
+            )
+            if gloss_col == "-none-":
+                gloss_col = None
+
+        st.markdown("---")
+
+        # Categorical columns (optional)
+        st.markdown("**Categorical Columns (Optional)**")
+        st.caption(
+            "If your data has multiple speakers or tokens, "
+            "select those columns so grouping works correctly."
+        )
+
+        # Exclude standard columns from categorical options
+        exclude_cols = {'index', 'entry', 'gloss', 'sub_index', 'word'}
+        available_cat_cols = [c for c in columns if c.lower() not in exclude_cols]
+
+        categorical_columns = st.multiselect(
+            "Select categorical columns",
+            options=available_cat_cols,
+            default=[],
+            help="Columns like 'speaker', 'token', etc.",
+        )
+
+        st.markdown("---")
+
+        # Process button
+        process_clicked = st.button(
+            "Explode Entries",
+            type="primary",
+            use_container_width=True,
+        )
+
+        if process_clicked:
+            st.session_state._explode_params = {
+                "entry_col": entry_col,
+                "gloss_col": gloss_col,
+                "categorical_columns": categorical_columns if categorical_columns else None,
+            }
+            st.rerun()
+
+        st.markdown("---")
+
+        if st.button("Back to Main Menu", use_container_width=True):
+            for key in ["_explode_params", "_explode_result"]:
+                if key in st.session_state:
+                    del st.session_state[key]
+            go_back_to_menu()
+
+    # === OUTPUT COLUMN ===
+    with output_col:
+        st.subheader("Output")
+
+        # Process if triggered
+        if "_explode_params" in st.session_state:
+            params = st.session_state._explode_params
+            del st.session_state._explode_params
+
+            with st.spinner("Exploding entries..."):
+                result = explode_entries(
+                    df=df,
+                    entry_col=params["entry_col"],
+                    gloss_col=params["gloss_col"],
+                    categorical_columns=params["categorical_columns"],
+                )
+
+            if result.success:
+                st.session_state._explode_result = result
+                st.session_state._scroll_to_top = True
+                st.session_state.database = result.df
+                st.session_state.database_validated = True
+                st.rerun()
+            else:
+                st.error(f"**Error:** {result.error}")
+
+                st.markdown("---")
+
+                if st.button("Clear Database & Start Over", type="primary", use_container_width=True):
+                    for key in ["_explode_params", "_explode_result"]:
+                        if key in st.session_state:
+                            del st.session_state[key]
+                    st.session_state.database = None
+                    st.session_state.database_validated = False
+                    st.session_state.database_filename = None
+                    st.session_state.database_sheet_name = None
+                    st.session_state.selected_task = None
+                    navigate_to(Screen.UPLOAD_DATABASE)
+
+        # Display result if available
+        if "_explode_result" in st.session_state:
+            result = st.session_state._explode_result
+
+            st.success("Entries exploded successfully!")
+
+            st.markdown(f"""
+            **Summary:**
+            - Entries processed: {result.summary.get('entries_processed', 'N/A')}
+            - Total words created: {result.summary.get('words_created', 'N/A')}
+            - Rows before: {result.summary.get('rows_before', 'N/A')}
+            - Rows after: {result.summary.get('rows_after', 'N/A')}
+            """)
+
+            # Cleaning report
+            if result.cleaning_report.get("changes_made"):
+                with st.expander("Cleaning report", expanded=False):
+                    punct = result.cleaning_report.get("punctuation_removed", {})
+                    ws = result.cleaning_report.get("whitespace_changes", 0)
+                    if punct:
+                        st.markdown("**Punctuation removed:**")
+                        for char, count in punct.items():
+                            st.text(f"  '{char}': {count}")
+                    if ws:
+                        st.markdown(f"**Whitespace normalized:** {ws} cells")
+                    st.markdown(
+                        "Original values preserved in the `entry_orig` column."
+                    )
+
+            # Note about preserved columns
+            if 'word_old' in result.df.columns:
+                st.info("Existing 'word' column was preserved as 'word_old'.")
+            if 'sub_index_old' in result.df.columns:
+                st.info("Existing 'sub_index' column was preserved as 'sub_index_old'.")
+
+            st.markdown("---")
+
+            # Buttons row
+            btn_col1, btn_col2 = st.columns(2)
+
+            with btn_col1:
+                st.download_button(
+                    label="Download Updated Database",
+                    data=export_database(result.df),
+                    file_name="database_exploded.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    type="primary",
+                    use_container_width=True,
+                )
+
+            with btn_col2:
+                if st.button("Return to Main Menu", use_container_width=True, key="return_after_explode"):
+                    for key in ["_explode_params", "_explode_result"]:
+                        if key in st.session_state:
+                            del st.session_state[key]
+                    go_back_to_menu()
+
+            st.markdown("---")
+
+            st.markdown("**Updated Database Preview:**")
+            preview_cols = []
+            for col in ['index', 'sub_index', 'entry', 'word', 'gloss']:
+                if col in result.df.columns:
+                    preview_cols.append(col)
+
+            if preview_cols:
+                st.dataframe(result.df[preview_cols].head(20), use_container_width=True)
+            else:
+                st.dataframe(result.df.head(20), use_container_width=True)
+
+        else:
+            # Initial state - show instructions
+            st.info(
+                "Configure your column mappings in the left panel, "
+                "then click **Explode Entries** to split multi-word entries."
+            )
+
+            st.markdown("---")
+
+            st.markdown("**About This Task**")
+            st.markdown(
+                """
+                This task splits multi-word entries into one-word-per-row,
+                adding two new columns:
+
+                - **sub_index**: The position of each word within its entry (1, 2, 3...)
+                - **word**: The individual word from the entry
+
+                Before splitting, entry transcriptions are cleaned:
+                - Unicode whitespace is normalized
+                - Punctuation is removed
+                - Multiple spaces are collapsed
+
+                If your database already has `word` or `sub_index` columns,
+                they will be preserved as `word_old` and `sub_index_old`.
+                """
+            )
+
+            st.markdown("---")
+
+            st.markdown("**Example (before):**")
+            example_before = pd.DataFrame({
+                'index': [1, 2, 3],
+                'entry': ['ma pa', 'ka', 'ta na sa'],
+                'gloss': ['parents', 'house', 'three words'],
+            })
+            st.dataframe(example_before, use_container_width=True, hide_index=True)
+
+            st.markdown("**Example (after):**")
+            example_after = pd.DataFrame({
+                'index': [1, 1, 2, 3, 3, 3],
+                'sub_index': [1, 2, 1, 1, 2, 3],
+                'entry': ['ma pa', 'ma pa', 'ka', 'ta na sa', 'ta na sa', 'ta na sa'],
+                'word': ['ma', 'pa', 'ka', 'ta', 'na', 'sa'],
+                'gloss': ['parents', 'parents', 'house', 'three words', 'three words', 'three words'],
+            })
+            st.dataframe(example_after, use_container_width=True, hide_index=True)
+
+
+def screen_segment_words():
+    """Screen for segmenting words into phonological columns."""
+
+    # Add vertical divider CSS
+    st.markdown(
+        """
+        <style>
+        div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:first-child {
+            border-right: 1px solid #ccc;
+            padding-right: 1.5rem !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.title("Segment Words")
+    st.markdown("---")
+
+    # Two-column layout
+    config_col, output_col = st.columns([1, 2])
+
+    df = st.session_state.database
+    columns = list(df.columns)
+
+    with config_col:
+        st.subheader("Configuration")
+
+        # Auto-detect word column
+        word_col = None
+        for col in columns:
+            if col.lower() == 'word':
+                word_col = col
+                break
+
+        if word_col:
+            st.success(f"Word column detected: **{word_col}**")
+        else:
+            st.info(
+                "No 'word' column found. Run **Explode Entries** first, "
+                "or select a column containing individual words below."
+            )
+            word_col = st.selectbox(
+                "Select word column",
+                options=columns,
+                help="Column containing individual IPA-transcribed words to segment",
+            )
+
+        st.markdown("---")
+
+        # Process button
+        process_clicked = st.button(
+            "Segment Words",
+            type="primary",
+            use_container_width=True,
+        )
+
+        if process_clicked:
+            st.session_state._segment_params = {
+                "word_col": word_col,
+            }
+            st.rerun()
+
+        st.markdown("---")
+
+        if st.button("Back to Main Menu", use_container_width=True):
+            for key in ["_segment_params", "_segment_result"]:
+                if key in st.session_state:
+                    del st.session_state[key]
+            go_back_to_menu()
+
+    # === OUTPUT COLUMN ===
+    with output_col:
+        st.subheader("Output")
+
+        # Process if triggered
+        if "_segment_params" in st.session_state:
+            params = st.session_state._segment_params
+            del st.session_state._segment_params
+
+            with st.spinner("Segmenting words..."):
+                result = segment_words(
+                    df=df,
+                    word_col=params["word_col"],
+                )
+
+            if result.success:
+                st.session_state._segment_result = result
+                st.session_state._scroll_to_top = True
+                st.session_state.database = result.df
+                st.session_state.database_validated = True
+                st.rerun()
+            else:
+                st.error(f"**Error:** {result.error}")
+
+                st.markdown("---")
+
+                if st.button("Clear Database & Start Over", type="primary", use_container_width=True):
+                    for key in ["_segment_params", "_segment_result"]:
+                        if key in st.session_state:
+                            del st.session_state[key]
+                    st.session_state.database = None
+                    st.session_state.database_validated = False
+                    st.session_state.database_filename = None
+                    st.session_state.database_sheet_name = None
+                    st.session_state.selected_task = None
+                    navigate_to(Screen.UPLOAD_DATABASE)
+
+        # Display result if available
+        if "_segment_result" in st.session_state:
+            result = st.session_state._segment_result
+            error_count = result.summary.get("error_count", 0)
+            total_words = result.summary.get("total_words", 0)
+            words_segmented = result.summary.get("words_segmented", 0)
+
+            if error_count == 0:
+                st.success("All words segmented successfully!")
+            else:
+                st.warning(
+                    f"Segmentation complete with {error_count} error(s) "
+                    f"out of {total_words} words."
+                )
+
+            st.markdown(f"""
+            **Summary:**
+            - Words segmented: {words_segmented}
+            - Errors: {error_count}
+            - Total words: {total_words}
+            """)
+
+            # Show errors in expander
+            if error_count > 0:
+                error_words = result.summary.get("error_words", {})
+                with st.expander(f"Error details ({error_count} words)", expanded=False):
+                    st.markdown(
+                        "These words have `'error'` in their segmentation columns:"
+                    )
+                    for word_text, reason in list(error_words.items())[:30]:
+                        st.text(f"  '{word_text}': {reason}")
+                    if len(error_words) > 30:
+                        st.text(f"  ... and {len(error_words) - 30} more")
+
+            # Cleaning report
+            if result.cleaning_report.get("changes_made"):
+                with st.expander("Cleaning report", expanded=False):
+                    punct = result.cleaning_report.get("punctuation_removed", {})
+                    ws = result.cleaning_report.get("whitespace_changes", 0)
+                    if punct:
+                        st.markdown("**Punctuation removed:**")
+                        for char, count in punct.items():
+                            st.text(f"  '{char}': {count}")
+                    if ws:
+                        st.markdown(f"**Whitespace normalized:** {ws} cells")
+
+            st.markdown("---")
+
+            # Buttons row
+            btn_col1, btn_col2 = st.columns(2)
+
+            with btn_col1:
+                st.download_button(
+                    label="Download Updated Database",
+                    data=export_database(result.df),
+                    file_name="database_segmented.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    type="primary",
+                    use_container_width=True,
+                )
+
+            with btn_col2:
+                if st.button("Return to Main Menu", use_container_width=True, key="return_after_segment"):
+                    for key in ["_segment_params", "_segment_result"]:
+                        if key in st.session_state:
+                            del st.session_state[key]
+                    go_back_to_menu()
+
+            st.markdown("---")
+
+            st.markdown("**Updated Database Preview:**")
+            preview_cols = []
+            for col in ['index', 'sub_index', 'word', 'P', 'R', 'C', 'M', 'V', 'F', 'T']:
+                if col in result.df.columns:
+                    preview_cols.append(col)
+
+            if preview_cols:
+                st.dataframe(result.df[preview_cols].head(20), use_container_width=True)
+            else:
+                st.dataframe(result.df.head(20), use_container_width=True)
+
+        else:
+            # Initial state - show instructions
+            st.info(
+                "Click **Segment Words** to break words into phonological columns."
+            )
+
+            st.markdown("---")
+
+            st.markdown("**About This Task**")
+            st.markdown(
+                """
+                This task breaks IPA-transcribed words into phonological columns:
+
+                | Column | Description |
+                |--------|-------------|
+                | **P** | Presyllable onset |
+                | **R** | Presyllable rime |
+                | **C** | Main syllable onset (consonant) |
+                | **M** | Medial (glide between onset and vowel) |
+                | **V** | Vowel (nucleus) |
+                | **F** | Final (coda) |
+                | **T** | Tone / register |
+
+                Words containing non-IPA characters, invalid tone sequences,
+                or no detectable vowels will have `'error'` in their segmentation
+                columns. These do not block processing of other words.
+                """
+            )
+
+            st.markdown("---")
+
+            st.markdown("**Example (before):**")
+            example_before = pd.DataFrame({
+                'index': [1, 1, 2],
+                'sub_index': [1, 2, 1],
+                'word': ['kʰaːw', 'maː', 'pa'],
+            })
+            st.dataframe(example_before, use_container_width=True, hide_index=True)
+
+            st.markdown("**Example (after):**")
+            example_after = pd.DataFrame({
+                'index': [1, 1, 2],
+                'sub_index': [1, 2, 1],
+                'word': ['kʰaːw', 'maː', 'pa'],
+                'P': ['', '', ''],
+                'R': ['', '', ''],
+                'C': ['kʰ', 'm', 'p'],
+                'M': ['', '', ''],
+                'V': ['aː', 'aː', 'a'],
+                'F': ['w', '∅', '∅'],
+                'T': ['', '', ''],
+            })
+            st.dataframe(example_after, use_container_width=True, hide_index=True)
+
+
 # =============================================================================
 # SCREEN ROUTER
 # =============================================================================
@@ -1466,6 +2377,9 @@ SCREEN_FUNCTIONS: dict[str, Callable] = {
     Screen.TASK_PLACEHOLDER: screen_task_placeholder,
     Screen.TASK_CREATE_DATA_COLLECTION_SCRIPT: screen_create_data_collection_script,
     Screen.TASK_ADD_AUDIO_LINKS: screen_add_audio_links,
+    Screen.TASK_UPDATE_ENTRIES_FROM_WORDS: screen_update_entries_from_words,
+    Screen.TASK_EXPLODE_ENTRIES: screen_explode_entries,
+    Screen.TASK_SEGMENT_WORDS: screen_segment_words,
 }
 
 

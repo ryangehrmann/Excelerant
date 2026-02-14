@@ -30,11 +30,11 @@ PRIORITY_COLUMNS_BEFORE = [
     'speaker',
     'token',
     'other',
-    'entry_orig',
     'gloss',
     'entry',
     'word',
     'P', 'R', 'C', 'M', 'V', 'F', 'T',  # Segmentation columns
+    'entry_orig',
 ]
 
 # For backwards compatibility
@@ -284,5 +284,47 @@ def prepare_and_export(
         link_col=link_col,
         gloss_col=gloss_col,
         sheet_name=sheet_name,
+        platform=platform,
+    )
+
+
+def export_database(df: pd.DataFrame, platform: str = 'windows') -> bytes:
+    """
+    Export database to formatted Excel file with automatic column detection.
+
+    This is the primary function for exporting databases throughout Excelerant.
+    It automatically detects which columns exist and applies appropriate formatting.
+
+    All Excel exports should use this function to ensure consistent formatting.
+    Update this function to change formatting across the entire application.
+
+    Args:
+        df: DataFrame to export
+        platform: 'windows' or 'mac' - controls hyperlink behavior
+
+    Returns:
+        Excel file as bytes
+    """
+    df = df.copy()
+
+    # Auto-detect columns
+    has_path = 'path' in df.columns or any(col.startswith('path_') for col in df.columns)
+    has_gloss = 'gloss' in df.columns
+
+    # Reorder columns
+    df = reorder_columns(df)
+
+    # Determine columns for formatting
+    path_col = 'path' if 'path' in df.columns else None
+    gloss_col = 'gloss' if has_gloss else None
+    link_col = 'link' if 'link' in df.columns else None
+
+    # Generate Excel with standard formatting
+    return generate_excel_file(
+        df=df,
+        path_col=path_col,
+        link_col=link_col,
+        gloss_col=gloss_col,
+        sheet_name='Lexical Database',
         platform=platform,
     )

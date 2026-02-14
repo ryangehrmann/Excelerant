@@ -51,9 +51,9 @@ def assemble_prompt_dict(
     if df[index_col].duplicated().any():
         duplicate_values = df[index_col][df[index_col].duplicated()].unique()
         error_msg = (
-            "Your index column contains duplicate values. Please ensure that "
-            "every word list item has a unique index number in your database. "
-            f"Duplicate values: {', '.join(map(str, duplicate_values))}"
+            "Your index column contains duplicate values. Each word list item must have "
+            "a unique index number. Please fix this in your Excel file, then clear the "
+            f"database and re-upload. Duplicate values: {', '.join(map(str, duplicate_values))}"
         )
         return None, error_msg
 
