@@ -14,6 +14,7 @@ Processing pipeline:
 7. Reorder columns and return result
 """
 
+import re
 import pandas as pd
 import string
 import unicodedata
@@ -73,6 +74,13 @@ def clean_transcription_column(df: pd.DataFrame, col: str) -> tuple[pd.DataFrame
         report["punctuation_removed"] = dict(punct_counter.most_common())
     translator = str.maketrans('', '', string.punctuation)
     df[col] = df[col].str.translate(translator)
+
+    # Insert spaces at tone-marked syllable boundaries
+    # Tone marks mid-string indicate a syllable break; insert space after them
+    tone_break_pattern = r'([¹²³⁴⁵⁶⁷⁸⁹⁰˥˦˧˨˩]+)(?=[^\s¹²³⁴⁵⁶⁷⁸⁹⁰˥˦˧˨˩])'
+    tone_before = df[col].copy()
+    df[col] = df[col].str.replace(tone_break_pattern, r'\1 ', regex=True)
+    report["tone_breaks_inserted"] = int((tone_before != df[col]).sum())
 
     # Normalize multiple whitespace to single space
     ws_before = df[col].copy()

@@ -154,6 +154,13 @@ def clean_transcription_column(df: pd.DataFrame, col: str) -> tuple[pd.DataFrame
     translator = str.maketrans('', '', string.punctuation)
     df[col] = df[col].str.translate(translator)
 
+    # Insert spaces at tone-marked syllable boundaries
+    # Tone marks mid-string indicate a syllable break; insert space after them
+    tone_break_pattern = r'([¹²³⁴⁵⁶⁷⁸⁹⁰˥˦˧˨˩]+)(?=[^\s¹²³⁴⁵⁶⁷⁸⁹⁰˥˦˧˨˩])'
+    tone_before = df[col].copy()
+    df[col] = df[col].str.replace(tone_break_pattern, r'\1 ', regex=True)
+    report["tone_breaks_inserted"] = int((tone_before != df[col]).sum())
+
     # Normalize multiple whitespace to single space
     ws_before = df[col].copy()
     df[col] = df[col].str.replace(r'\s+', ' ', regex=True)
@@ -1061,6 +1068,16 @@ def segment_words(
                   f"Please check your data.",
         )
 
+    # Step 2b: Re-explode words that were split at tone boundaries
+    # Cleaning may have inserted spaces at internal tone marks
+    has_space = df[word_col].str.contains(' ', na=False)
+    tone_splits = int(has_space.sum())
+    if tone_splits > 0:
+        df = (df
+              .assign(**{word_col: df[word_col].str.split()})
+              .explode(word_col)
+              .reset_index(drop=True))
+
     # Step 3: Pre-scan for non-IPA characters -> mark error rows
     error_mask = pd.Series(False, index=df.index)
     error_words = {}  # word -> reason
@@ -1153,6 +1170,7 @@ def segment_words(
         "error_count": error_count,
         "total_words": total_words,
         "error_words": error_words,
+        "tone_splits": tone_splits,
     }
 
     return SegmentationResult(

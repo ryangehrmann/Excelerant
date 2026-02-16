@@ -17,6 +17,7 @@ import pandas as pd
 from io import BytesIO
 from openpyxl import load_workbook
 from openpyxl.styles import Font, Alignment
+from openpyxl.utils import get_column_letter
 
 
 # =============================================================================
@@ -231,6 +232,22 @@ def generate_excel_file(
     for cell in ws[1]:
         cell.alignment = alignment_center
         cell.font = font_bold
+
+    # Add word column formulae if segmentation columns exist
+    seg_cols = ['P', 'R', 'C', 'M', 'V', 'F', 'T']
+    if 'word' in df.columns and all(col in df.columns for col in seg_cols):
+        word_col_idx = df.columns.get_loc('word') + 1
+        seg_letters = {
+            col: get_column_letter(df.columns.get_loc(col) + 1)
+            for col in seg_cols
+        }
+        for row_idx in range(2, len(df) + 2):
+            concat = '&'.join(f'{seg_letters[col]}{row_idx}' for col in seg_cols)
+            formula = f'=SUBSTITUTE({concat},"\u2205","")'
+            cell = ws.cell(row=row_idx, column=word_col_idx)
+            cell.value = formula
+            cell.alignment = alignment_center
+            cell.font = font_regular
 
     # Save to bytes
     formatted_output = BytesIO()
