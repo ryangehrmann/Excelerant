@@ -16,7 +16,7 @@ Formatting conventions:
 import pandas as pd
 from io import BytesIO
 from openpyxl import load_workbook
-from openpyxl.styles import Font, Alignment
+from openpyxl.styles import Font, Alignment, PatternFill
 from openpyxl.utils import get_column_letter
 
 
@@ -32,10 +32,10 @@ PRIORITY_COLUMNS_BEFORE = [
     'token',
     'other',
     'gloss',
+    'entry_orig',
     'entry',
     'word',
     'P', 'R', 'C', 'M', 'V', 'F', 'T',  # Segmentation columns
-    'entry_orig',
 ]
 
 # For backwards compatibility
@@ -161,6 +161,8 @@ def generate_excel_file(
     alignment_center = Alignment(horizontal='center', vertical='center')
     alignment_shrink = Alignment(horizontal='center', vertical='center', shrink_to_fit=True)
 
+    fill_gray = PatternFill(start_color="D9D9D9", end_color="D9D9D9", fill_type="solid")
+
     # Find all link and path columns (including multi-column variants like link_M1_1)
     link_cols = [col for col in df.columns if col == 'link' or col.startswith('link_')]
     path_cols = [col for col in df.columns if col == 'path' or col.startswith('path_')]
@@ -191,6 +193,12 @@ def generate_excel_file(
     if gloss_col and gloss_col in df.columns:
         gloss_col_num = df.columns.get_loc(gloss_col) + 1
 
+    # Word column gets gray shading when segmentation columns exist
+    word_col_num = None
+    seg_col_names = ['P', 'R', 'C', 'M', 'V', 'F', 'T']
+    if 'word' in df.columns and all(c in df.columns for c in seg_col_names):
+        word_col_num = df.columns.get_loc('word') + 1
+
     # Add hyperlinks to link columns (Windows only)
     # Mac link columns contain terminal commands, not hyperlinks
     if platform == 'windows':
@@ -219,6 +227,11 @@ def generate_excel_file(
                 elif cell.column in path_col_nums:
                     cell.alignment = alignment_shrink
                     cell.font = font_regular
+                # Format word column (gray shading)
+                elif word_col_num and cell.column == word_col_num:
+                    cell.alignment = alignment_center
+                    cell.font = font_regular
+                    cell.fill = fill_gray
                 # Format gloss column
                 elif gloss_col_num and cell.column == gloss_col_num:
                     cell.alignment = alignment_left
@@ -232,6 +245,8 @@ def generate_excel_file(
     for cell in ws[1]:
         cell.alignment = alignment_center
         cell.font = font_bold
+        if word_col_num and cell.column == word_col_num:
+            cell.fill = fill_gray
 
     # Add word column formulae if segmentation columns exist
     seg_cols = ['P', 'R', 'C', 'M', 'V', 'F', 'T']
@@ -248,6 +263,38 @@ def generate_excel_file(
             cell.value = formula
             cell.alignment = alignment_center
             cell.font = font_regular
+
+    # Set column widths based on column name
+    COLUMN_WIDTHS = {
+        'index': 6,
+        'sub_index': 6,
+        'speaker': 6,
+        'token': 6,
+        'gloss': 12,
+        'entry': 12,
+        'word': 6,
+        'P': 3,
+        'R': 3,
+        'C': 3,
+        'M': 3,
+        'V': 3,
+        'F': 3,
+        'T': 3,
+        'entry_orig': 12,
+        'link': 6,
+        'path': 6,
+    }
+
+    for col_idx, col_name in enumerate(df.columns, start=1):
+        col_letter = get_column_letter(col_idx)
+        if col_name in COLUMN_WIDTHS:
+            ws.column_dimensions[col_letter].width = COLUMN_WIDTHS[col_name]
+        elif col_name.startswith('link_'):
+            ws.column_dimensions[col_letter].width = COLUMN_WIDTHS['link']
+        elif col_name.startswith('path_'):
+            ws.column_dimensions[col_letter].width = COLUMN_WIDTHS['path']
+        else:
+            ws.column_dimensions[col_letter].width = 12
 
     # Save to bytes
     formatted_output = BytesIO()

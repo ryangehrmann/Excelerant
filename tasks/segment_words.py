@@ -1160,6 +1160,17 @@ def segment_words(
                         if word_text not in error_words:
                             error_words[word_text] = "unrecognizable onset pattern"
 
+    # Reconstruct word column from segmentation columns (P+R+C+M+V+F+T)
+    # so the DataFrame matches what the Excel formula produces
+    seg_cols = ['P', 'R', 'C', 'M', 'V', 'F', 'T']
+    non_error_mask = df['C'] != 'error'
+    if non_error_mask.any():
+        df.loc[non_error_mask, word_col] = (
+            df.loc[non_error_mask, seg_cols]
+            .fillna('')
+            .apply(lambda row: ''.join(v for v in row if v != '\u2205'), axis=1)
+        )
+
     # Build summary
     total_words = len(df)
     error_count = (df['C'] == 'error').sum()

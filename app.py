@@ -32,6 +32,7 @@ from tasks import (
     validate_delimiter_consistency,
     add_audio_links,
     export_database,
+    reorder_columns,
     FORMATTING_REQUIRED_COLUMNS,
     detect_columns,
     check_database_formatting,
@@ -65,7 +66,7 @@ TASKS = {
         id="create_data_collection_script",
         name="Create Data Collection Script",
         category="Configure Audio",
-        description="Generate an XML script for SpeechRecorder to collect audio recordings. Maps database columns to prompt fields (gloss, index, frame, extra info) and supports multiple token repetitions.",
+        description="Generate an XML script for [SpeechRecorder](https://www.bas.uni-muenchen.de/Bas/software/speechrecorder/) to collect audio recordings. Maps database columns to prompt fields (gloss, index, frame, extra info) and supports multiple token repetitions.",
         requirements=[
             "Database must have 'index' and 'gloss' columns populated",
             "Each index value must be unique",
@@ -253,6 +254,8 @@ class Screen:
     WELCOME = "welcome"
     UPLOAD_DATABASE = "upload_database"
     MAIN_MENU = "main_menu"
+    MAIN_MENU_PHONOLOGICAL = "main_menu_phonological"
+    MAIN_MENU_ACOUSTIC = "main_menu_acoustic"
     ABOUT = "about"
     TUTORIAL = "tutorial"
     # Task screens - add as needed
@@ -277,6 +280,8 @@ def init_session_state():
         "database_sheet_name": None,
         # Main menu state
         "selected_task": None,
+        # Analysis mode: "phonological" or "acoustic"
+        "analysis_mode": None,
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -292,7 +297,11 @@ def navigate_to(screen: str):
 
 def go_back_to_menu():
     """Convenience function for returning to main menu."""
-    navigate_to(Screen.MAIN_MENU)
+    mode = st.session_state.get("analysis_mode", "phonological")
+    if mode == "acoustic":
+        navigate_to(Screen.MAIN_MENU_ACOUSTIC)
+    else:
+        navigate_to(Screen.MAIN_MENU_PHONOLOGICAL)
 
 
 def has_valid_database() -> bool:
@@ -330,9 +339,38 @@ def screen_welcome():
         )
         
         st.markdown("")
-        
-        if st.button("Let's Begin", use_container_width=True, type="primary"):
-            navigate_to(Screen.UPLOAD_DATABASE)
+
+        # Style for the disabled Acoustic button (placed outside columns to avoid misalignment)
+        st.markdown(
+            """
+            <style>
+            button[data-testid="baseButton-primary"][disabled] {
+                background-color: #a5d6a7 !important;
+                color: rgba(255, 255, 255, 0.7) !important;
+                border: none !important;
+                cursor: not-allowed !important;
+            }
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        # Two analysis path buttons side by side
+        btn_left, btn_right = st.columns(2)
+
+        with btn_left:
+            if st.button("Phonological Analysis", use_container_width=True, type="primary"):
+                st.session_state.analysis_mode = "phonological"
+                navigate_to(Screen.UPLOAD_DATABASE)
+
+        with btn_right:
+            st.button(
+                "Acoustic Phonetic Analysis",
+                use_container_width=True,
+                type="primary",
+                disabled=True,
+                help="Coming soon",
+            )
 
         st.markdown("")
 
@@ -363,8 +401,8 @@ def screen_about():
         Version 1.0.0
         
         ### Contact
-        
-        For questions or feedback, contact [your email here].
+
+        For questions or feedback, contact excelerant.linguistics@gmail.com.
         """
     )
     
@@ -509,7 +547,7 @@ def screen_upload_database():
                                     del st.session_state[key]
                             
                             st.success("Database loaded!")
-                            navigate_to(Screen.MAIN_MENU)
+                            go_back_to_menu()
             
             else:
                 # Multiple valid sheets - user must choose
@@ -577,7 +615,7 @@ def screen_upload_database():
                                         del st.session_state[key]
 
                                 st.success("Database loaded!")
-                                navigate_to(Screen.MAIN_MENU)
+                                go_back_to_menu()
         
         st.markdown("---")
         
@@ -623,132 +661,52 @@ def screen_upload_database():
                 st.dataframe(df.head(10), use_container_width=True, height=300)
 
 
-def screen_main_menu():
-    """Main menu with task categories and info panel."""
-    
-    # Add vertical divider CSS just for this screen
-    st.markdown(
-        """
-        <style>
-        div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:first-child {
-            border-right: 1px solid #ccc;
-            padding-right: 1.5rem !important;
-        }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
-    
-    # st.markdown("---")
-    
-    # col1, col2, col3, col4, col5 = st.columns([1, 1, 1, 1, 1])
-    # with col3:
-    #     st.image("assets/excelerant_banner.png", use_container_width=True)
-    
-    # st.image("assets/excelerant_banner.png", width=400)
-    
-    # st.markdown("---")
-    
+def _render_main_menu_banner():
+    """Render the centered banner used on main menu screens."""
     import base64
 
     with open("assets/excelerant_banner.png", "rb") as f:
         banner_data = base64.b64encode(f.read()).decode()
-    
+
     st.markdown(
         f'<div style="display: flex; justify-content: center; margin-bottom: 1rem;"><img src="data:image/png;base64,{banner_data}" width="600"></div>',
         unsafe_allow_html=True,
     )
-    
-    st.markdown("---")
-    
-    # Two-column layout (1/3 left, 2/3 right)
-    left_col, right_col = st.columns([1, 2])
-    
-    with left_col:
-        
-        # Iterate through categories
-        for category in TASK_CATEGORIES:
-            st.markdown(f"**{category}**")
-            
-            # Get tasks in this category
-            category_tasks = [t for t in TASKS.values() if t.category == category]
-            
-            for task in category_tasks:
-                # Determine if this task is selected
-                is_selected = st.session_state.selected_task == task.id
-                is_enabled = task.id in ENABLED_TASKS
 
-                # Use different button style for selected
-                if is_selected:
-                    button_type = "primary"
-                else:
-                    button_type = "secondary"
 
-                if st.button(
-                    task.name,
-                    key=f"btn_{task.id}",
-                    use_container_width=True,
-                    type=button_type,
-                    disabled=not is_enabled,
-                ):
-                    st.session_state.selected_task = task.id
-                    st.rerun()
-            
-            st.markdown("")  # Spacer between categories
-    
+def _render_task_detail(right_col):
+    """Render the right-column task detail view (shared by all main menus)."""
     with right_col:
         if st.session_state.selected_task is None:
-            # No task selected - show hint, database options, then preview
+            # No task selected - show hint, then preview
             st.info("Select a task from the left panel to see details and begin.")
-            
-            # Database management
-            with st.expander("Database Options"):
-                # Download current database
-                st.download_button(
-                    label="Download Database",
-                    data=export_database(st.session_state.database),
-                    file_name="database.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    use_container_width=True,
-                )
 
-                if st.button("Replace Database", use_container_width=True):
-                    navigate_to(Screen.UPLOAD_DATABASE)
-
-                if st.button("Clear Database & Start Over", use_container_width=True):
-                    st.session_state.database = None
-                    st.session_state.database_validated = False
-                    st.session_state.database_filename = None
-                    st.session_state.database_sheet_name = None
-                    st.session_state.selected_task = None
-                    navigate_to(Screen.WELCOME)
-            
             st.markdown("---")
-            
+
             st.subheader("Database Preview")
-            
-            df = st.session_state.database
+
+            df = reorder_columns(st.session_state.database)
             st.markdown(f"**Rows:** {len(df):,} · **Columns:** {len(df.columns)}")
-            
+
             with st.expander("Columns", expanded=False):
                 for col in df.columns:
-                    st.text(f"• {col}")
-            
+                    st.text(f"\u2022 {col}")
+
             with st.expander("Data Preview", expanded=True):
                 st.dataframe(df.head(10), use_container_width=True, height=300)
-        
+
         else:
             # Show selected task info
             task = TASKS[st.session_state.selected_task]
-            
+
             # Navigation buttons at top
             col1, col2 = st.columns([1, 1])
-            
+
             with col1:
                 if st.button("Back to Preview", use_container_width=True):
                     st.session_state.selected_task = None
                     st.rerun()
-            
+
             with col2:
                 if st.button("Begin", type="primary", use_container_width=True):
                     # Navigate to task screen based on selected task
@@ -761,33 +719,111 @@ def screen_main_menu():
                     }
                     target_screen = task_screens.get(task.id, Screen.TASK_PLACEHOLDER)
                     navigate_to(target_screen)
-            
+
             st.subheader(task.name)
-            st.markdown(f"*{task.category}*")
-            
+
             st.markdown("---")
-            
+
             st.markdown("**Description:**")
             st.markdown(task.description)
-            
+
             st.markdown("---")
-            
+
             st.markdown("**Requirements:**")
             for req in task.requirements:
                 st.markdown(f"- {req}")
-            
+
             st.markdown("---")
-            
+
             st.markdown("**Example:**")
             st.code(task.example, language=None)
-            
+
             st.markdown("---")
-            
+
             # Tutorial link
             if task.youtube_url:
                 st.markdown(f"[Watch Tutorial]({task.youtube_url})")
             else:
                 st.markdown("*Tutorial video coming soon*")
+
+
+def screen_main_menu_phonological():
+    """Main menu for Phonological Analysis - flat task list, database options at bottom."""
+
+    # Add vertical divider CSS just for this screen
+    st.markdown(
+        """
+        <style>
+        div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:first-child {
+            border-right: 1px solid #ccc;
+            padding-right: 1.5rem !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    _render_main_menu_banner()
+
+    st.markdown("---")
+
+    # Two-column layout (1/3 left, 2/3 right)
+    left_col, right_col = st.columns([1, 2])
+
+    with left_col:
+        st.markdown("**Tasks**")
+
+        # Show only enabled tasks, no category headers
+        for task in TASKS.values():
+            if task.id not in ENABLED_TASKS:
+                continue
+
+            is_selected = st.session_state.selected_task == task.id
+            button_type = "primary" if is_selected else "secondary"
+
+            if st.button(
+                task.name,
+                key=f"btn_{task.id}",
+                use_container_width=True,
+                type=button_type,
+            ):
+                st.session_state.selected_task = task.id
+                st.rerun()
+
+        # Database options at the bottom of the left column
+        st.markdown("---")
+        st.markdown("**Database**")
+
+        st.download_button(
+            label="Download Database",
+            data=export_database(st.session_state.database),
+            file_name="database.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True,
+        )
+
+        if st.button("Replace Database", use_container_width=True):
+            navigate_to(Screen.UPLOAD_DATABASE)
+
+        if st.button("Clear Database & Start Over", use_container_width=True):
+            st.session_state.database = None
+            st.session_state.database_validated = False
+            st.session_state.database_filename = None
+            st.session_state.database_sheet_name = None
+            st.session_state.selected_task = None
+            navigate_to(Screen.WELCOME)
+
+    _render_task_detail(right_col)
+
+
+def screen_main_menu_acoustic():
+    """Placeholder main menu for Acoustic Phonetic Analysis (not yet implemented)."""
+    st.title("Acoustic Phonetic Analysis")
+    st.markdown("---")
+    st.info("This section is not yet implemented.")
+
+    if st.button("Back to Welcome", type="primary"):
+        navigate_to(Screen.WELCOME)
 
 
 def screen_task_placeholder():
@@ -2371,7 +2407,9 @@ def screen_segment_words():
 SCREEN_FUNCTIONS: dict[str, Callable] = {
     Screen.WELCOME: screen_welcome,
     Screen.UPLOAD_DATABASE: screen_upload_database,
-    Screen.MAIN_MENU: screen_main_menu,
+    Screen.MAIN_MENU: screen_main_menu_phonological,  # legacy fallback
+    Screen.MAIN_MENU_PHONOLOGICAL: screen_main_menu_phonological,
+    Screen.MAIN_MENU_ACOUSTIC: screen_main_menu_acoustic,
     Screen.ABOUT: screen_about,
     Screen.TUTORIAL: screen_tutorial,
     Screen.TASK_PLACEHOLDER: screen_task_placeholder,
