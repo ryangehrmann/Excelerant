@@ -40,6 +40,14 @@ from tasks import (
     explode_entries,
     SegmentationResult,
     segment_words,
+    BLANK_SENTINEL,
+    Card,
+    CardBuildResult,
+    get_column_filter_options,
+    filter_dataframe,
+    sort_dataframe,
+    build_cards,
+    generate_cards_html,
 )
 
 
@@ -176,6 +184,20 @@ TASKS = {
         youtube_url=None,
     ),
     
+    # Orthography Development
+    "export_sorting_activity": TaskInfo(
+        id="export_sorting_activity",
+        name="Export Sorting Activity",
+        category="Orthography Development",
+        description="Generate a printable HTML card deck for orthography-development card-sorting activities. Filter your database down to the rows you want, pick which columns appear on each card, and export a Letter-size deck (10 cards/page) with Lao- and IPA-aware fonts.",
+        requirements=[
+            "Database must have an 'index' column (a 'sub_index' column is used automatically if present)",
+            "Each index (or index + sub_index) among the rows you export must be unique",
+        ],
+        example="Input: Lexical database\nOutput: Printable HTML card deck for a card-sorting activity",
+        youtube_url=None,
+    ),
+
     # Acoustic Phonetic Analysis
     "force_align_textgrids": TaskInfo(
         id="force_align_textgrids",
@@ -232,6 +254,7 @@ TASK_CATEGORIES = [
     "Configure Audio",
     "Configure Transcriptions",
     "Phonological Analysis",
+    "Orthography Development",
     "Acoustic Phonetic Analysis",
 ]
 
@@ -242,6 +265,16 @@ ENABLED_TASKS = {
     "explode_entries",
     "segment_words",
     "update_entries_from_words",
+    "export_sorting_activity",
+}
+
+# Which task categories appear on each analysis mode's main menu.
+# (Tasks are filtered by both ENABLED_TASKS and this mapping, so a task
+# belongs on exactly the menu(s) for its category.)
+MENU_CATEGORIES = {
+    "phonological": ["Configure Audio", "Configure Transcriptions", "Phonological Analysis"],
+    "orthography": ["Orthography Development"],
+    "acoustic": ["Acoustic Phonetic Analysis"],
 }
 
 
@@ -255,6 +288,7 @@ class Screen:
     UPLOAD_DATABASE = "upload_database"
     MAIN_MENU = "main_menu"
     MAIN_MENU_PHONOLOGICAL = "main_menu_phonological"
+    MAIN_MENU_ORTHOGRAPHY = "main_menu_orthography"
     MAIN_MENU_ACOUSTIC = "main_menu_acoustic"
     ABOUT = "about"
     TUTORIAL = "tutorial"
@@ -265,6 +299,7 @@ class Screen:
     TASK_UPDATE_ENTRIES_FROM_WORDS = "task_update_entries_from_words"
     TASK_EXPLODE_ENTRIES = "task_explode_entries"
     TASK_SEGMENT_WORDS = "task_segment_words"
+    TASK_EXPORT_SORTING_ACTIVITY = "task_export_sorting_activity"
 
 
 def init_session_state():
@@ -300,6 +335,8 @@ def go_back_to_menu():
     mode = st.session_state.get("analysis_mode", "phonological")
     if mode == "acoustic":
         navigate_to(Screen.MAIN_MENU_ACOUSTIC)
+    elif mode == "orthography":
+        navigate_to(Screen.MAIN_MENU_ORTHOGRAPHY)
     else:
         navigate_to(Screen.MAIN_MENU_PHONOLOGICAL)
 
@@ -332,9 +369,11 @@ def screen_welcome():
             """
             ### Welcome!
             
-            Excelerant helps you process lexical databases for phonological 
-            and phonetic analysis. Upload your data, configure transcriptions, 
-            and generate publication-ready outputs.
+            Excelerant helps you create and process lexical databases for 
+            phonological / phonetic analysis and participatory work in 
+            orthography development.
+            
+            What would you like to work on?
             """
         )
         
@@ -355,12 +394,17 @@ def screen_welcome():
             unsafe_allow_html=True,
         )
 
-        # Two analysis path buttons side by side
-        btn_left, btn_right = st.columns(2)
+        # Three analysis path buttons side by side
+        btn_left, btn_mid, btn_right = st.columns(3)
 
         with btn_left:
             if st.button("Phonological Analysis", use_container_width=True, type="primary"):
                 st.session_state.analysis_mode = "phonological"
+                navigate_to(Screen.UPLOAD_DATABASE)
+
+        with btn_mid:
+            if st.button("Orthography Development", use_container_width=True, type="primary"):
+                st.session_state.analysis_mode = "orthography"
                 navigate_to(Screen.UPLOAD_DATABASE)
 
         with btn_right:
@@ -716,6 +760,7 @@ def _render_task_detail(right_col):
                         "update_entries_from_words": Screen.TASK_UPDATE_ENTRIES_FROM_WORDS,
                         "explode_entries": Screen.TASK_EXPLODE_ENTRIES,
                         "segment_words": Screen.TASK_SEGMENT_WORDS,
+                        "export_sorting_activity": Screen.TASK_EXPORT_SORTING_ACTIVITY,
                     }
                     target_screen = task_screens.get(task.id, Screen.TASK_PLACEHOLDER)
                     navigate_to(target_screen)
@@ -773,9 +818,84 @@ def screen_main_menu_phonological():
     with left_col:
         st.markdown("**Tasks**")
 
-        # Show only enabled tasks, no category headers
+        # Show only enabled tasks belonging to this menu's categories
+        allowed_categories = MENU_CATEGORIES["phonological"]
         for task in TASKS.values():
             if task.id not in ENABLED_TASKS:
+                continue
+            if task.category not in allowed_categories:
+                continue
+
+            is_selected = st.session_state.selected_task == task.id
+            button_type = "primary" if is_selected else "secondary"
+
+            if st.button(
+                task.name,
+                key=f"btn_{task.id}",
+                use_container_width=True,
+                type=button_type,
+            ):
+                st.session_state.selected_task = task.id
+                st.rerun()
+
+        # Database options at the bottom of the left column
+        st.markdown("---")
+        st.markdown("**Database**")
+
+        st.download_button(
+            label="Download Database",
+            data=export_database(st.session_state.database),
+            file_name="database.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True,
+        )
+
+        if st.button("Replace Database", use_container_width=True):
+            navigate_to(Screen.UPLOAD_DATABASE)
+
+        if st.button("Clear Database & Start Over", use_container_width=True):
+            st.session_state.database = None
+            st.session_state.database_validated = False
+            st.session_state.database_filename = None
+            st.session_state.database_sheet_name = None
+            st.session_state.selected_task = None
+            navigate_to(Screen.WELCOME)
+
+    _render_task_detail(right_col)
+
+
+def screen_main_menu_orthography():
+    """Main menu for Orthography Development - flat task list, database options at bottom."""
+
+    # Add vertical divider CSS just for this screen
+    st.markdown(
+        """
+        <style>
+        div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:first-child {
+            border-right: 1px solid #ccc;
+            padding-right: 1.5rem !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    _render_main_menu_banner()
+
+    st.markdown("---")
+
+    # Two-column layout (1/3 left, 2/3 right)
+    left_col, right_col = st.columns([1, 2])
+
+    with left_col:
+        st.markdown("**Tasks**")
+
+        # Show only enabled tasks belonging to this menu's categories
+        allowed_categories = MENU_CATEGORIES["orthography"]
+        for task in TASKS.values():
+            if task.id not in ENABLED_TASKS:
+                continue
+            if task.category not in allowed_categories:
                 continue
 
             is_selected = st.session_state.selected_task == task.id
@@ -2400,6 +2520,280 @@ def screen_segment_words():
             st.dataframe(example_after, use_container_width=True, hide_index=True)
 
 
+def screen_export_sorting_activity():
+    """Screen for exporting a printable card-sorting activity (Orthography Development)."""
+
+    # Add vertical divider CSS
+    st.markdown(
+        """
+        <style>
+        div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:first-child {
+            border-right: 1px solid #ccc;
+            padding-right: 1.5rem !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.title("Export Sorting Activity")
+    st.markdown("---")
+
+    # Two-column layout
+    config_col, output_col = st.columns([1, 2])
+
+    df = st.session_state.database
+    columns = list(df.columns)
+
+    with config_col:
+        # === STEP 1: FILTER DATABASE (OPTIONAL) ===
+        st.subheader("Step 1: Filter Database (Optional)")
+        st.caption("Narrow down which rows are available before choosing card content. Leave blank to include everything.")
+
+        if "_sorting_filter_epoch" not in st.session_state:
+            st.session_state._sorting_filter_epoch = 0
+        epoch = st.session_state._sorting_filter_epoch
+
+        filter_columns = st.multiselect(
+            "Filter by columns",
+            options=columns,
+            default=[],
+            key=f"_sort_filter_cols_{epoch}",
+        )
+
+        selected_filters = {}
+        for col in filter_columns:
+            col_options = get_column_filter_options(df, col)
+            selected_filters[col] = st.multiselect(
+                f"Values to include — '{col}'",
+                options=col_options,
+                default=col_options,
+                key=f"_sort_filter_val_{epoch}_{col}",
+            )
+
+        if st.button("Clear Filters", use_container_width=True, disabled=not filter_columns):
+            st.session_state._sorting_filter_epoch = epoch + 1
+            st.rerun()
+
+        filtered_df = filter_dataframe(df, selected_filters)
+
+        st.markdown(f"**{len(filtered_df):,}** of **{len(df):,}** rows match your filters.")
+
+        st.markdown("---")
+
+        # === STEP 2: CARD CONTENT ===
+        st.subheader("Step 2: Card Content")
+
+        index_default = columns.index("index") if "index" in columns else 0
+        index_col = st.selectbox(
+            "Index column",
+            options=columns,
+            index=index_default,
+            key="_sort_index_col",
+        )
+
+        sub_index_options = ["-none-"] + columns
+        sub_index_default = sub_index_options.index("sub_index") if "sub_index" in columns else 0
+        sub_index_choice = st.selectbox(
+            "Sub-index column (optional)",
+            options=sub_index_options,
+            index=sub_index_default,
+            key="_sort_sub_index_col",
+            help="If your entries have been exploded into words, select 'sub_index' so each card gets an 'index.sub_index' label.",
+        )
+        sub_index_col = None if sub_index_choice == "-none-" else sub_index_choice
+
+        st.markdown("**Card lines** (top to bottom)")
+
+        line_options = ["-none-"] + columns
+        line_1 = st.selectbox("Line 1 (large)", options=line_options, index=0, key="_sort_line_1")
+        line_2 = st.selectbox("Line 2", options=line_options, index=0, key="_sort_line_2")
+        line_3 = st.selectbox("Line 3", options=line_options, index=0, key="_sort_line_3")
+
+        line_columns = [c for c in [line_1, line_2, line_3] if c != "-none-"]
+
+        st.markdown("")
+
+        sort_options = ["-none-"] + line_columns
+        sort_key = "_sort_sort_by"
+        if sort_key in st.session_state and st.session_state[sort_key] not in sort_options:
+            st.session_state[sort_key] = "-none-"
+        sort_choice = st.selectbox(
+            "Sort by",
+            options=sort_options,
+            index=0,
+            key=sort_key,
+            disabled=not line_columns,
+            help="Sort cards by this column before export -- handy for spotting near-duplicate entries during a workshop, since they'll land next to each other in the printed grid.",
+        )
+        sort_by_col = None if sort_choice == "-none-" else sort_choice
+
+        st.markdown("---")
+
+        # === STEP 3: EXPORT ===
+        st.subheader("Step 3: Export")
+
+        file_name = st.text_input(
+            "Export filename",
+            value="sorting_activity",
+            key="_sort_file_name",
+            help="The .html extension will be added automatically.",
+        )
+
+        can_generate = len(filtered_df) > 0 and len(line_columns) > 0
+
+        generate_clicked = st.button(
+            "Generate Sorting Activity",
+            type="primary",
+            use_container_width=True,
+            disabled=not can_generate,
+        )
+
+        if not can_generate:
+            if len(filtered_df) == 0:
+                st.caption("No rows match your current filters.")
+            else:
+                st.caption("Select at least one card line above.")
+
+        if generate_clicked:
+            st.session_state._sorting_generate_params = {
+                "filtered_df": filtered_df,
+                "index_col": index_col,
+                "sub_index_col": sub_index_col,
+                "line_columns": line_columns,
+                "sort_by_col": sort_by_col,
+                "file_name": file_name,
+            }
+            st.rerun()
+
+        st.markdown("")
+
+        if st.button("Back to Main Menu", use_container_width=True):
+            for key in ["_sorting_generate_params", "_sorting_export_result"]:
+                if key in st.session_state:
+                    del st.session_state[key]
+            go_back_to_menu()
+
+    # === OUTPUT COLUMN ===
+    with output_col:
+        st.subheader("Output")
+
+        # Process generation if triggered
+        if "_sorting_generate_params" in st.session_state:
+            params = st.session_state._sorting_generate_params
+            del st.session_state._sorting_generate_params
+
+            with st.spinner("Building sorting activity..."):
+                build_result = build_cards(
+                    df=params["filtered_df"],
+                    index_col=params["index_col"],
+                    sub_index_col=params["sub_index_col"],
+                    line_columns=params["line_columns"],
+                    sort_by_col=params["sort_by_col"],
+                )
+
+                html = generate_cards_html(build_result.cards) if build_result.success else None
+
+            st.session_state._sorting_export_result = {
+                "build_result": build_result,
+                "html": html,
+                "file_name": params["file_name"],
+            }
+            st.session_state._scroll_to_top = True
+            st.rerun()
+
+        if "_sorting_export_result" in st.session_state:
+            export = st.session_state._sorting_export_result
+            build_result: CardBuildResult = export["build_result"]
+
+            if build_result.success:
+                st.success(
+                    f"Sorting activity generated: {build_result.included_rows:,} card(s) "
+                    f"from {build_result.total_rows:,} row(s)."
+                )
+
+                st.markdown("---")
+
+                safe_name = export["file_name"].strip() or "sorting_activity"
+                if not safe_name.endswith(".html"):
+                    safe_name += ".html"
+
+                btn_col1, btn_col2 = st.columns(2)
+
+                with btn_col1:
+                    st.download_button(
+                        label=f"Download {safe_name}",
+                        data=export["html"].encode("utf-8"),
+                        file_name=safe_name,
+                        mime="text/html",
+                        type="primary",
+                        use_container_width=True,
+                    )
+
+                with btn_col2:
+                    if st.button("Return to Main Menu", use_container_width=True, key="return_after_sorting"):
+                        del st.session_state._sorting_export_result
+                        go_back_to_menu()
+
+                st.markdown("---")
+
+                st.markdown("**Preview:**")
+                components.html(export["html"], height=500, scrolling=True)
+
+            else:
+                st.error(f"**Error:** {build_result.error}")
+
+                if build_result.duplicate_indices:
+                    st.markdown("**Duplicate values:**")
+                    for dup in build_result.duplicate_indices[:20]:
+                        st.text(f"  {dup}")
+                    if len(build_result.duplicate_indices) > 20:
+                        st.text(f"  ... and {len(build_result.duplicate_indices) - 20} more")
+
+                st.markdown("---")
+
+                if st.button("Back to Configuration", use_container_width=True):
+                    del st.session_state._sorting_export_result
+                    st.rerun()
+
+        else:
+            # Not yet generated - show live filtered (and sorted) preview + instructions
+            preview_df = sort_dataframe(filtered_df, sort_by_col)
+
+            st.markdown("**Filtered Database Preview**")
+            st.markdown(f"**{len(filtered_df):,}** of **{len(df):,}** rows match your current filters.")
+            if sort_by_col:
+                st.caption(f"Sorted by '{sort_by_col}'.")
+            st.dataframe(preview_df.head(15), use_container_width=True)
+
+            st.markdown("---")
+
+            st.markdown("**About Sorting Activities**")
+            st.markdown(
+                """
+                This task exports a printable HTML deck of cards for orthography-development
+                card-sorting activities with speakers.
+
+                1. **Filter** (optional) narrows down which rows are eligible.
+                2. **Card lines** pick up to 3 columns to display on each card (e.g. a native
+                   script gloss, an English gloss, and a phonetic transcription).
+                3. **Export** generates a Letter-size HTML file, 10 cards per page, with
+                   automatic Lao-script and IPA font handling.
+                """
+            )
+
+            st.markdown("---")
+
+            st.markdown("**Example card content:**")
+            example_card = pd.DataFrame({
+                "index": [1],
+                "gloss_lao": ["ສຸຂ"],
+                "gloss_eng": ["happiness"],
+                "phonetic": ["/suk/"],
+            })
+            st.dataframe(example_card, use_container_width=True, hide_index=True)
+
+
 # =============================================================================
 # SCREEN ROUTER
 # =============================================================================
@@ -2409,6 +2803,7 @@ SCREEN_FUNCTIONS: dict[str, Callable] = {
     Screen.UPLOAD_DATABASE: screen_upload_database,
     Screen.MAIN_MENU: screen_main_menu_phonological,  # legacy fallback
     Screen.MAIN_MENU_PHONOLOGICAL: screen_main_menu_phonological,
+    Screen.MAIN_MENU_ORTHOGRAPHY: screen_main_menu_orthography,
     Screen.MAIN_MENU_ACOUSTIC: screen_main_menu_acoustic,
     Screen.ABOUT: screen_about,
     Screen.TUTORIAL: screen_tutorial,
@@ -2418,6 +2813,7 @@ SCREEN_FUNCTIONS: dict[str, Callable] = {
     Screen.TASK_UPDATE_ENTRIES_FROM_WORDS: screen_update_entries_from_words,
     Screen.TASK_EXPLODE_ENTRIES: screen_explode_entries,
     Screen.TASK_SEGMENT_WORDS: screen_segment_words,
+    Screen.TASK_EXPORT_SORTING_ACTIVITY: screen_export_sorting_activity,
 }
 
 

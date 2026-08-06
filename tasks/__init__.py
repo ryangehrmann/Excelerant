@@ -61,6 +61,17 @@ from .segment_words import (
     segment_words,
 )
 
+from .export_cards import (
+    BLANK_SENTINEL,
+    Card,
+    CardBuildResult,
+    get_column_filter_options,
+    filter_dataframe,
+    sort_dataframe,
+    build_cards,
+    generate_cards_html,
+)
+
 __all__ = [
     # upload_database
     "REQUIRED_COLUMNS",
@@ -103,4 +114,13 @@ __all__ = [
     # segment_words
     "SegmentationResult",
     "segment_words",
+    # export_cards
+    "BLANK_SENTINEL",
+    "Card",
+    "CardBuildResult",
+    "get_column_filter_options",
+    "filter_dataframe",
+    "sort_dataframe",
+    "build_cards",
+    "generate_cards_html",
 ]
