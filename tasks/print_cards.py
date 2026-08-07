@@ -1,6 +1,6 @@
 """
-Export Sorting Activity Task
-=============================
+Print Cards Task
+=================
 
 Builds a printable HTML card deck for orthography-development card-sorting
 activities (originally "Participator Lite"). Users pick which database
@@ -122,9 +122,10 @@ def build_cards(
             index+sub_index pair must be unique. If None, just "{index}"
             is used and must be unique on its own.
         line_columns: 1-3 column names, in display order top to bottom.
-        sort_by_col: Optional column (normally one of line_columns) to sort
-            the cards by before export -- e.g. so near-duplicate entries
-            land next to each other in the printed grid.
+        sort_by_col: Optional column (any column in df, not necessarily one
+            of line_columns) to sort the cards by before export -- e.g. so
+            near-duplicate entries land next to each other in the printed
+            grid.
     """
     df = sort_dataframe(df, sort_by_col)
     total_rows = len(df)

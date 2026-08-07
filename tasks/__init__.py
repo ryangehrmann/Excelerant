@@ -61,7 +61,7 @@ from .segment_words import (
     segment_words,
 )
 
-from .export_cards import (
+from .print_cards import (
     BLANK_SENTINEL,
     Card,
     CardBuildResult,
@@ -70,6 +70,17 @@ from .export_cards import (
     sort_dataframe,
     build_cards,
     generate_cards_html,
+)
+
+from .process_cards import (
+    ProcessCardsResult,
+    sanitize_activity_column_name,
+    parse_uid_list,
+    process_cards_manual,
+    AI_ASSISTED_PROMPT,
+    AIOutputParseResult,
+    derive_category_from_filename,
+    parse_ai_assisted_output,
 )
 
 __all__ = [
@@ -114,7 +125,7 @@ __all__ = [
     # segment_words
     "SegmentationResult",
     "segment_words",
-    # export_cards
+    # print_cards
     "BLANK_SENTINEL",
     "Card",
     "CardBuildResult",
@@ -123,4 +134,13 @@ __all__ = [
     "sort_dataframe",
     "build_cards",
     "generate_cards_html",
+    # process_cards
+    "ProcessCardsResult",
+    "sanitize_activity_column_name",
+    "parse_uid_list",
+    "process_cards_manual",
+    "AI_ASSISTED_PROMPT",
+    "AIOutputParseResult",
+    "derive_category_from_filename",
+    "parse_ai_assisted_output",
 ]

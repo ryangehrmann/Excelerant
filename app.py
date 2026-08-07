@@ -48,6 +48,13 @@ from tasks import (
     sort_dataframe,
     build_cards,
     generate_cards_html,
+    ProcessCardsResult,
+    sanitize_activity_column_name,
+    parse_uid_list,
+    process_cards_manual,
+    AI_ASSISTED_PROMPT,
+    AIOutputParseResult,
+    parse_ai_assisted_output,
 )
 
 
@@ -185,9 +192,9 @@ TASKS = {
     ),
     
     # Orthography Development
-    "export_sorting_activity": TaskInfo(
-        id="export_sorting_activity",
-        name="Export Sorting Activity",
+    "print_cards": TaskInfo(
+        id="print_cards",
+        name="Print Cards",
         category="Orthography Development",
         description="Generate a printable HTML card deck for orthography-development card-sorting activities. Filter your database down to the rows you want, pick which columns appear on each card, and export a Letter-size deck (10 cards/page) with Lao- and IPA-aware fonts.",
         requirements=[
@@ -195,6 +202,18 @@ TASKS = {
             "Each index (or index + sub_index) among the rows you export must be unique",
         ],
         example="Input: Lexical database\nOutput: Printable HTML card deck for a card-sorting activity",
+        youtube_url=None,
+    ),
+    "process_cards": TaskInfo(
+        id="process_cards",
+        name="Process Cards",
+        category="Orthography Development",
+        description="Record the results of a card-sorting activity back into the database. Name the activity, then create a category for each pile the cards were sorted into and supply the UID (from the bottom-right of each card) for every card in that pile -- typed in by hand or read from photos by AI. A new column is added to the database with the category label on each matching row.",
+        requirements=[
+            "Database must have an 'index' column (a 'sub_index' column is used automatically if present)",
+            "Cards must have been generated with 'Print Cards' using the same index/sub-index columns, so the UIDs on the cards match the database",
+        ],
+        example="Input: Category 'i' -> UIDs 4, 9, 22.1\nOutput: Rows 4, 9, and 22.1 get 'i' in the new activity column",
         youtube_url=None,
     ),
 
@@ -265,7 +284,8 @@ ENABLED_TASKS = {
     "explode_entries",
     "segment_words",
     "update_entries_from_words",
-    "export_sorting_activity",
+    "print_cards",
+    "process_cards",
 }
 
 # Which task categories appear on each analysis mode's main menu.
@@ -299,7 +319,8 @@ class Screen:
     TASK_UPDATE_ENTRIES_FROM_WORDS = "task_update_entries_from_words"
     TASK_EXPLODE_ENTRIES = "task_explode_entries"
     TASK_SEGMENT_WORDS = "task_segment_words"
-    TASK_EXPORT_SORTING_ACTIVITY = "task_export_sorting_activity"
+    TASK_PRINT_CARDS = "task_print_cards"
+    TASK_PROCESS_CARDS = "task_process_cards"
 
 
 def init_session_state():
@@ -398,18 +419,18 @@ def screen_welcome():
         btn_left, btn_mid, btn_right = st.columns(3)
 
         with btn_left:
-            if st.button("Phonological Analysis", use_container_width=True, type="primary"):
+            if st.button("Phonology", use_container_width=True, type="primary"):
                 st.session_state.analysis_mode = "phonological"
                 navigate_to(Screen.UPLOAD_DATABASE)
 
         with btn_mid:
-            if st.button("Orthography Development", use_container_width=True, type="primary"):
+            if st.button("Orthography", use_container_width=True, type="primary"):
                 st.session_state.analysis_mode = "orthography"
                 navigate_to(Screen.UPLOAD_DATABASE)
 
         with btn_right:
             st.button(
-                "Acoustic Phonetic Analysis",
+                "Acoustic Phonetics",
                 use_container_width=True,
                 type="primary",
                 disabled=True,
@@ -431,19 +452,17 @@ def screen_about():
     """About page with app information."""
     st.title("About Excelerant")
     st.markdown("---")
-    
+
     st.markdown(
         """
-        ### Purpose
-        
-        Excelerant is a tool for linguists working with lexical databases. 
-        It streamlines the workflow from raw data collection through 
-        phonological analysis and acoustic phonetic measurements.
-        
         ### Version
-        
-        Version 1.0.0
-        
+
+        v0.5
+
+        ### GitHub
+
+        [github.com/ryangehrmann/Excelerant](https://github.com/ryangehrmann/Excelerant)
+
         ### Contact
 
         For questions or feedback, contact excelerant.linguistics@gmail.com.
@@ -760,7 +779,8 @@ def _render_task_detail(right_col):
                         "update_entries_from_words": Screen.TASK_UPDATE_ENTRIES_FROM_WORDS,
                         "explode_entries": Screen.TASK_EXPLODE_ENTRIES,
                         "segment_words": Screen.TASK_SEGMENT_WORDS,
-                        "export_sorting_activity": Screen.TASK_EXPORT_SORTING_ACTIVITY,
+                        "print_cards": Screen.TASK_PRINT_CARDS,
+                        "process_cards": Screen.TASK_PROCESS_CARDS,
                     }
                     target_screen = task_screens.get(task.id, Screen.TASK_PLACEHOLDER)
                     navigate_to(target_screen)
@@ -2520,7 +2540,7 @@ def screen_segment_words():
             st.dataframe(example_after, use_container_width=True, hide_index=True)
 
 
-def screen_export_sorting_activity():
+def screen_print_cards():
     """Screen for exporting a printable card-sorting activity (Orthography Development)."""
 
     # Add vertical divider CSS
@@ -2536,7 +2556,7 @@ def screen_export_sorting_activity():
         unsafe_allow_html=True,
     )
 
-    st.title("Export Sorting Activity")
+    st.title("Print Cards")
     st.markdown("---")
 
     # Two-column layout
@@ -2550,9 +2570,9 @@ def screen_export_sorting_activity():
         st.subheader("Step 1: Filter Database (Optional)")
         st.caption("Narrow down which rows are available before choosing card content. Leave blank to include everything.")
 
-        if "_sorting_filter_epoch" not in st.session_state:
-            st.session_state._sorting_filter_epoch = 0
-        epoch = st.session_state._sorting_filter_epoch
+        if "_print_cards_filter_epoch" not in st.session_state:
+            st.session_state._print_cards_filter_epoch = 0
+        epoch = st.session_state._print_cards_filter_epoch
 
         filter_columns = st.multiselect(
             "Filter by columns",
@@ -2572,7 +2592,7 @@ def screen_export_sorting_activity():
             )
 
         if st.button("Clear Filters", use_container_width=True, disabled=not filter_columns):
-            st.session_state._sorting_filter_epoch = epoch + 1
+            st.session_state._print_cards_filter_epoch = epoch + 1
             st.rerun()
 
         filtered_df = filter_dataframe(df, selected_filters)
@@ -2614,7 +2634,7 @@ def screen_export_sorting_activity():
 
         st.markdown("")
 
-        sort_options = ["-none-"] + line_columns
+        sort_options = ["-none-"] + columns
         sort_key = "_sort_sort_by"
         if sort_key in st.session_state and st.session_state[sort_key] not in sort_options:
             st.session_state[sort_key] = "-none-"
@@ -2623,8 +2643,7 @@ def screen_export_sorting_activity():
             options=sort_options,
             index=0,
             key=sort_key,
-            disabled=not line_columns,
-            help="Sort cards by this column before export -- handy for spotting near-duplicate entries during a workshop, since they'll land next to each other in the printed grid.",
+            help="Sort cards by any database column before export -- handy for spotting near-duplicate entries during a workshop, since they'll land next to each other in the printed grid. Doesn't need to be one of the card lines above.",
         )
         sort_by_col = None if sort_choice == "-none-" else sort_choice
 
@@ -2656,7 +2675,7 @@ def screen_export_sorting_activity():
                 st.caption("Select at least one card line above.")
 
         if generate_clicked:
-            st.session_state._sorting_generate_params = {
+            st.session_state._print_cards_generate_params = {
                 "filtered_df": filtered_df,
                 "index_col": index_col,
                 "sub_index_col": sub_index_col,
@@ -2669,7 +2688,7 @@ def screen_export_sorting_activity():
         st.markdown("")
 
         if st.button("Back to Main Menu", use_container_width=True):
-            for key in ["_sorting_generate_params", "_sorting_export_result"]:
+            for key in ["_print_cards_generate_params", "_print_cards_export_result"]:
                 if key in st.session_state:
                     del st.session_state[key]
             go_back_to_menu()
@@ -2679,9 +2698,9 @@ def screen_export_sorting_activity():
         st.subheader("Output")
 
         # Process generation if triggered
-        if "_sorting_generate_params" in st.session_state:
-            params = st.session_state._sorting_generate_params
-            del st.session_state._sorting_generate_params
+        if "_print_cards_generate_params" in st.session_state:
+            params = st.session_state._print_cards_generate_params
+            del st.session_state._print_cards_generate_params
 
             with st.spinner("Building sorting activity..."):
                 build_result = build_cards(
@@ -2694,7 +2713,7 @@ def screen_export_sorting_activity():
 
                 html = generate_cards_html(build_result.cards) if build_result.success else None
 
-            st.session_state._sorting_export_result = {
+            st.session_state._print_cards_export_result = {
                 "build_result": build_result,
                 "html": html,
                 "file_name": params["file_name"],
@@ -2702,8 +2721,8 @@ def screen_export_sorting_activity():
             st.session_state._scroll_to_top = True
             st.rerun()
 
-        if "_sorting_export_result" in st.session_state:
-            export = st.session_state._sorting_export_result
+        if "_print_cards_export_result" in st.session_state:
+            export = st.session_state._print_cards_export_result
             build_result: CardBuildResult = export["build_result"]
 
             if build_result.success:
@@ -2732,7 +2751,7 @@ def screen_export_sorting_activity():
 
                 with btn_col2:
                     if st.button("Return to Main Menu", use_container_width=True, key="return_after_sorting"):
-                        del st.session_state._sorting_export_result
+                        del st.session_state._print_cards_export_result
                         go_back_to_menu()
 
                 st.markdown("---")
@@ -2753,7 +2772,7 @@ def screen_export_sorting_activity():
                 st.markdown("---")
 
                 if st.button("Back to Configuration", use_container_width=True):
-                    del st.session_state._sorting_export_result
+                    del st.session_state._print_cards_export_result
                     st.rerun()
 
         else:
@@ -2794,6 +2813,434 @@ def screen_export_sorting_activity():
             st.dataframe(example_card, use_container_width=True, hide_index=True)
 
 
+def _clear_process_cards_state():
+    """Remove all Process Cards session-state, including per-category widget keys."""
+    for cat_id in st.session_state.get("_process_cards_categories", []):
+        for prefix in ("_pc_label_", "_pc_uids_"):
+            key = f"{prefix}{cat_id}"
+            if key in st.session_state:
+                del st.session_state[key]
+
+    for key in [
+        "_process_cards_categories",
+        "_process_cards_next_id",
+        "_process_cards_generate_params",
+        "_process_cards_result",
+        "_process_cards_method",
+        "_pc_ai_paste",
+        "_process_cards_ai_parse_feedback",
+    ]:
+        if key in st.session_state:
+            del st.session_state[key]
+
+
+def screen_process_cards():
+    """Screen for recording card-sorting activity results back into the database."""
+
+    # Add vertical divider CSS
+    st.markdown(
+        """
+        <style>
+        div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:first-child {
+            border-right: 1px solid #ccc;
+            padding-right: 1.5rem !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.title("Process Cards")
+    st.markdown("---")
+
+    config_col, output_col = st.columns([1, 2])
+
+    df = st.session_state.database
+    columns = list(df.columns)
+
+    with config_col:
+        # === METHOD ===
+        st.subheader("Method")
+
+        if "_process_cards_method" not in st.session_state:
+            st.session_state._process_cards_method = "manual"
+
+        def _method_pill(label: str):
+            st.markdown(
+                f'<div style="padding:0.5rem 1rem;border-radius:0.5rem;'
+                f'background-color:#2E7D32;color:white;text-align:center;'
+                f'font-weight:600;">{label}</div>',
+                unsafe_allow_html=True,
+            )
+
+        method_col1, method_col2 = st.columns(2)
+        with method_col1:
+            if st.session_state._process_cards_method == "manual":
+                _method_pill("Manual Input")
+            elif st.button("Manual Input", use_container_width=True):
+                st.session_state._process_cards_method = "manual"
+                st.rerun()
+        with method_col2:
+            if st.session_state._process_cards_method == "ai":
+                _method_pill("AI-Assisted Input")
+            elif st.button("AI-Assisted Input", use_container_width=True):
+                st.session_state._process_cards_method = "ai"
+                st.rerun()
+
+        st.markdown("---")
+
+        # === STEP 1: INDEX COLUMNS ===
+        st.subheader("Step 1: Index Columns")
+        st.caption("Must match the index/sub-index columns used to print the cards, so UIDs line up.")
+
+        index_default = columns.index("index") if "index" in columns else 0
+        index_col = st.selectbox(
+            "Index column",
+            options=columns,
+            index=index_default,
+            key="_pc_index_col",
+        )
+
+        sub_index_options = ["-none-"] + columns
+        sub_index_default = sub_index_options.index("sub_index") if "sub_index" in columns else 0
+        sub_index_choice = st.selectbox(
+            "Sub-index column (optional)",
+            options=sub_index_options,
+            index=sub_index_default,
+            key="_pc_sub_index_col",
+            help="Select this if the cards were printed with 'index.sub_index' UIDs.",
+        )
+        sub_index_col = None if sub_index_choice == "-none-" else sub_index_choice
+
+        st.markdown("---")
+
+        # === STEP 2: ACTIVITY NAME ===
+        st.subheader("Step 2: Sorting Activity Name")
+
+        activity_name = st.text_input(
+            "Activity name",
+            key="_pc_activity_name",
+            placeholder="e.g. front p",
+            help="Becomes the new database column name. Spaces are replaced with underscores.",
+        )
+
+        sanitized_column_name = sanitize_activity_column_name(activity_name)
+        if sanitized_column_name:
+            if sanitized_column_name in df.columns:
+                st.caption(f"Column name: `{sanitized_column_name}` -- already exists, choose another name.")
+            else:
+                st.caption(f"Column name: `{sanitized_column_name}`")
+
+        st.markdown("---")
+
+        # === AI-ASSISTED INPUT (photo-based pre-fill for Step 3) ===
+        if st.session_state._process_cards_method == "ai":
+            st.subheader("AI-Assisted Photo Reading")
+
+            with st.expander("How AI-Assisted Input works -- read before your workshop", expanded=True):
+                st.markdown(
+                    """
+                    This method uses an AI chat tool you already have access to (Claude, ChatGPT,
+                    or similar) to read the UID codes off photographed cards, instead of you typing
+                    them in by hand. Plan the photo side of this **before** your workshop:
+
+                    **1. During the workshop -- spread and photograph each pile**
+
+                    For each sorted pile, spread the cards out so every card's UID (bottom-right
+                    corner) is visible in the photo -- a stacked deck only shows the top card.
+                    Take one photo per pile; if a pile is too big to fit in one frame, take
+                    several photos of it.
+
+                    **2. Name your photos by category**
+
+                    Rename each photo to match the category it shows, e.g. `i.jpg`. If a pile
+                    needed more than one photo, add a number: `i_2.jpg`, `i_3.jpg` -- these get
+                    combined back into a single "i" category automatically. The name becomes the
+                    value written into the database for every card in that pile, so spell it
+                    exactly as you want it to appear.
+
+                    **3. Get the codes read by AI**
+
+                    Copy the prompt below, start a new conversation in Claude, ChatGPT, or a
+                    similar tool, paste the prompt in, and attach all of your category-labeled
+                    photos to that same message. If you're shooting on an iPhone, note that AI
+                    chat tools don't reliably accept its default `.HEIC` photos -- switch to
+                    "Most Compatible" mode first (Settings > Camera > Formats) so photos save as
+                    `.jpg`, or convert existing ones before uploading.
+
+                    **4. Bring the results back here**
+
+                    Copy the AI's full reply, paste it into the box below, and click
+                    **Parse & Fill Categories** to fill in Step 3. Review what gets filled in
+                    before processing -- a misread code will usually show up as a UID "not found"
+                    error below, which is your cue to check the original photo.
+                    """
+                )
+
+            st.markdown("**Prompt to copy into your AI chat tool:**")
+            st.code(AI_ASSISTED_PROMPT, language=None)
+
+            ai_paste_text = st.text_area(
+                "Paste the AI's reply here",
+                key="_pc_ai_paste",
+                height=150,
+                placeholder="i.jpg: 4, 9, 22.1\ni_2.jpg: 15, 30.2\ne.jpg: 3, 7, 12.1",
+            )
+
+            if st.button(
+                "Parse & Fill Categories",
+                use_container_width=True,
+                disabled=not ai_paste_text.strip(),
+            ):
+                parse_result = parse_ai_assisted_output(ai_paste_text)
+                st.session_state._process_cards_ai_parse_feedback = parse_result
+
+                if parse_result.success:
+                    for cat_id in st.session_state.get("_process_cards_categories", []):
+                        for prefix in ("_pc_label_", "_pc_uids_"):
+                            key = f"{prefix}{cat_id}"
+                            if key in st.session_state:
+                                del st.session_state[key]
+
+                    next_id = st.session_state.get("_process_cards_next_id", 0)
+                    new_ids = []
+                    for label, uid_text in parse_result.categories:
+                        st.session_state[f"_pc_label_{next_id}"] = label
+                        st.session_state[f"_pc_uids_{next_id}"] = uid_text
+                        new_ids.append(next_id)
+                        next_id += 1
+
+                    st.session_state._process_cards_categories = new_ids
+                    st.session_state._process_cards_next_id = next_id
+
+                st.rerun()
+
+            ai_feedback: AIOutputParseResult | None = st.session_state.get("_process_cards_ai_parse_feedback")
+            if ai_feedback is not None:
+                if ai_feedback.success:
+                    n = len(ai_feedback.categories)
+                    st.success(f"Filled in {n} categor{'y' if n == 1 else 'ies'} below -- review before processing.")
+                else:
+                    st.error(ai_feedback.error)
+                if ai_feedback.unparsed_lines:
+                    st.warning(
+                        "Some lines didn't match the expected format and were skipped:\n\n"
+                        + "\n".join(f"- {ln}" for ln in ai_feedback.unparsed_lines)
+                    )
+
+            st.markdown("---")
+
+        # === STEP 3: CATEGORIES ===
+        st.subheader("Step 3: Categories")
+        st.caption(
+            "One category per pile the cards were sorted into. Enter the UID from the "
+            "bottom-right of each card, separated by commas, spaces, or newlines."
+        )
+
+        if "_process_cards_categories" not in st.session_state:
+            st.session_state._process_cards_categories = [0, 1]
+            st.session_state._process_cards_next_id = 2
+
+        categories: list[tuple[str, str]] = []
+        for cat_id in list(st.session_state._process_cards_categories):
+            label_key = f"_pc_label_{cat_id}"
+            uids_key = f"_pc_uids_{cat_id}"
+
+            cat_label_col, cat_remove_col = st.columns([5, 1])
+            with cat_label_col:
+                label = st.text_input(
+                    "Category label",
+                    key=label_key,
+                    placeholder="e.g. i",
+                    label_visibility="collapsed",
+                )
+            with cat_remove_col:
+                if st.button("✕", key=f"_pc_remove_{cat_id}", use_container_width=True, help="Remove this category"):
+                    st.session_state._process_cards_categories.remove(cat_id)
+                    for key in (label_key, uids_key):
+                        if key in st.session_state:
+                            del st.session_state[key]
+                    st.rerun()
+
+            uid_text = st.text_area(
+                "UIDs",
+                key=uids_key,
+                placeholder="e.g. 4, 9, 22.1",
+                label_visibility="collapsed",
+                height=80,
+            )
+
+            if uid_text.strip():
+                st.caption(f"{len(parse_uid_list(uid_text))} UID(s)")
+
+            categories.append((label, uid_text))
+
+            st.markdown("")
+
+        if st.button("+ Add Category", use_container_width=True):
+            new_id = st.session_state._process_cards_next_id
+            st.session_state._process_cards_categories.append(new_id)
+            st.session_state._process_cards_next_id = new_id + 1
+            st.rerun()
+
+        st.markdown("---")
+
+        # === STEP 4: PROCESS ===
+        st.subheader("Step 4: Process")
+
+        can_process = bool(sanitized_column_name) and any(
+            label.strip() and text.strip() for label, text in categories
+        )
+
+        process_clicked = st.button(
+            "Process Cards",
+            type="primary",
+            use_container_width=True,
+            disabled=not can_process,
+        )
+
+        if not can_process:
+            if not sanitized_column_name:
+                st.caption("Enter a sorting activity name.")
+            else:
+                st.caption("Add at least one category with a label and UIDs.")
+
+        if process_clicked:
+            st.session_state._process_cards_generate_params = {
+                "index_col": index_col,
+                "sub_index_col": sub_index_col,
+                "activity_name": activity_name,
+                "categories": categories,
+            }
+            st.rerun()
+
+        st.markdown("")
+
+        if st.button("Back to Main Menu", use_container_width=True):
+            _clear_process_cards_state()
+            go_back_to_menu()
+
+    # === OUTPUT COLUMN ===
+    with output_col:
+        st.subheader("Output")
+
+        # Process if triggered
+        if "_process_cards_generate_params" in st.session_state:
+            params = st.session_state._process_cards_generate_params
+            del st.session_state._process_cards_generate_params
+
+            with st.spinner("Processing cards..."):
+                result = process_cards_manual(
+                    df=df,
+                    index_col=params["index_col"],
+                    sub_index_col=params["sub_index_col"],
+                    activity_name=params["activity_name"],
+                    categories=params["categories"],
+                )
+
+            st.session_state._process_cards_result = result
+            if result.success:
+                st.session_state.database = result.df
+                st.session_state.database_validated = True
+                st.session_state._scroll_to_top = True
+            st.rerun()
+
+        # Display result if available
+        if "_process_cards_result" in st.session_state:
+            result: ProcessCardsResult = st.session_state._process_cards_result
+
+            if result.success:
+                categories_n = result.summary["categories"]
+                st.success(
+                    f"Column '{result.column_name}' added: {result.summary['rows_labeled']:,} row(s) labeled "
+                    f"across {categories_n} categor{'y' if categories_n == 1 else 'ies'}, "
+                    f"{result.summary['rows_blank']:,} row(s) left blank."
+                )
+
+                st.markdown("---")
+
+                btn_col1, btn_col2 = st.columns(2)
+
+                with btn_col1:
+                    st.download_button(
+                        label="Download Updated Database",
+                        data=export_database(result.df),
+                        file_name="database_processed.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        type="primary",
+                        use_container_width=True,
+                    )
+
+                with btn_col2:
+                    if st.button("Return to Main Menu", use_container_width=True, key="return_after_process_cards"):
+                        del st.session_state._process_cards_result
+                        _clear_process_cards_state()
+                        go_back_to_menu()
+
+                st.markdown("---")
+
+                st.markdown("**Updated Database Preview:**")
+                preview_cols = [c for c in [index_col, sub_index_col, result.column_name] if c]
+                st.dataframe(result.df[preview_cols].head(20), use_container_width=True)
+
+            else:
+                st.error(f"**Error:** {result.error}")
+
+                if result.duplicate_uids:
+                    st.markdown("**Duplicate UIDs:**")
+                    for uid in result.duplicate_uids[:20]:
+                        st.text(f"  {uid}")
+                    if len(result.duplicate_uids) > 20:
+                        st.text(f"  ... and {len(result.duplicate_uids) - 20} more")
+
+                if result.unmatched_uids:
+                    st.markdown("**UIDs not found in database:**")
+                    for uid in result.unmatched_uids[:20]:
+                        st.text(f"  {uid}")
+                    if len(result.unmatched_uids) > 20:
+                        st.text(f"  ... and {len(result.unmatched_uids) - 20} more")
+
+                st.markdown("---")
+
+                if st.button("Back to Configuration", use_container_width=True):
+                    del st.session_state._process_cards_result
+                    st.rerun()
+
+        else:
+            # Not yet processed - show instructions
+            st.info(
+                "Configure the index columns, name your sorting activity, add categories with "
+                "their UIDs, then click **Process Cards** in the left panel."
+            )
+
+            st.markdown("---")
+
+            st.markdown("**About Processing Cards**")
+            st.markdown(
+                """
+                This task records the results of a card-sorting activity back into the database.
+
+                1. **Index Columns** must match what was used to print the cards, so UIDs line up.
+                2. **Activity Name** becomes a new database column (spaces become underscores).
+                3. **Categories** -- one per pile the cards were sorted into. Each category has a
+                   label (the value written into the database) and a list of UIDs (from the
+                   bottom-right of each card) sorted into that pile.
+                4. **Process** writes the category label onto each matching row's new column.
+                   Rows not covered by any category are left blank.
+                """
+            )
+
+            st.markdown("---")
+
+            st.markdown("**Example:**")
+            example_df = pd.DataFrame({
+                "index": [4, 9, 15, 22],
+                "sub_index": [1, 1, 1, 1],
+                "front_p": ["i", "i", "e", None],
+            })
+            st.dataframe(example_df, use_container_width=True, hide_index=True)
+
+
 # =============================================================================
 # SCREEN ROUTER
 # =============================================================================
@@ -2813,7 +3260,8 @@ SCREEN_FUNCTIONS: dict[str, Callable] = {
     Screen.TASK_UPDATE_ENTRIES_FROM_WORDS: screen_update_entries_from_words,
     Screen.TASK_EXPLODE_ENTRIES: screen_explode_entries,
     Screen.TASK_SEGMENT_WORDS: screen_segment_words,
-    Screen.TASK_EXPORT_SORTING_ACTIVITY: screen_export_sorting_activity,
+    Screen.TASK_PRINT_CARDS: screen_print_cards,
+    Screen.TASK_PROCESS_CARDS: screen_process_cards,
 }
 
 
