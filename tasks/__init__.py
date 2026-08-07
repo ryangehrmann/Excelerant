@@ -87,6 +87,11 @@ from .process_cards import (
     parse_ai_assisted_output,
 )
 
+from .sort_cards import (
+    generate_single_card_html,
+    find_card_index_by_uid,
+)
+
 __all__ = [
     # upload_database
     "REQUIRED_COLUMNS",
@@ -151,4 +156,7 @@ __all__ = [
     "AIOutputParseResult",
     "derive_category_from_filename",
     "parse_ai_assisted_output",
+    # sort_cards
+    "generate_single_card_html",
+    "find_card_index_by_uid",
 ]
