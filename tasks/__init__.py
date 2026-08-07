@@ -61,7 +61,7 @@ from .segment_words import (
     segment_words,
 )
 
-from .print_cards import (
+from .generate_cards import (
     BLANK_SENTINEL,
     Card,
     CardBuildResult,
@@ -70,6 +70,10 @@ from .print_cards import (
     sort_dataframe,
     build_cards,
     generate_cards_html,
+    SORT_ACTIVITY_FORMAT,
+    SORT_ACTIVITY_FORMAT_VERSION,
+    build_sort_activity_filters,
+    build_sort_activity_json,
 )
 
 from .process_cards import (
@@ -125,7 +129,7 @@ __all__ = [
     # segment_words
     "SegmentationResult",
     "segment_words",
-    # print_cards
+    # generate_cards
     "BLANK_SENTINEL",
     "Card",
     "CardBuildResult",
@@ -134,6 +138,10 @@ __all__ = [
     "sort_dataframe",
     "build_cards",
     "generate_cards_html",
+    "SORT_ACTIVITY_FORMAT",
+    "SORT_ACTIVITY_FORMAT_VERSION",
+    "build_sort_activity_filters",
+    "build_sort_activity_json",
     # process_cards
     "ProcessCardsResult",
     "sanitize_activity_column_name",

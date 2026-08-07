@@ -1,11 +1,14 @@
 """
-Print Cards Task
-=================
+Generate Cards Task
+====================
 
-Builds a printable HTML card deck for orthography-development card-sorting
-activities (originally "Participator Lite"). Users pick which database
-columns appear as the (up to three) lines of text on each card, then export
-a Letter-size, 10-cards-per-page HTML file with Lao/IPA-aware fonts.
+Builds two exports of the same filtered, formatted card set for
+orthography-development card-sorting activities (originally "Participator
+Lite"): a printable HTML deck for physical sorting, and a "prepared
+activity" JSON for digital/asynchronous sorting in Sort Cards. Users pick
+which database columns appear as the (up to three) lines of text on each
+card; both exports share that same filtering and card-content
+configuration.
 
 The HTML/CSS/JS rendering in generate_cards_html() is a near-verbatim port
 of Participator Lite's create_cards_html() -- getting the font stack right
@@ -15,9 +18,14 @@ thing that changed upstream of it is how each card's lines are assembled:
 Participator Lite parsed a single "\\n"-delimited "prompt" column; here the
 lines come directly from user-selected columns, so that fragile parsing
 step is gone rather than added to.
+
+The JSON export format is defined in SORT_CARDS_JSON_FORMAT.md at the
+project root -- keep that document in sync with build_sort_activity_json().
 """
 
+import json
 import re
+from datetime import datetime
 import pandas as pd
 from dataclasses import dataclass, field
 
@@ -459,3 +467,63 @@ def generate_cards_html(cards: list[Card]) -> str:
     return html + card_content + '''
 </body>
 </html>'''
+
+
+# =============================================================================
+# JSON Export (Step 3, alternate output) -- prepared Sort Cards activity
+# =============================================================================
+
+SORT_ACTIVITY_FORMAT = "excelerant_sort_cards"
+SORT_ACTIVITY_FORMAT_VERSION = 1
+
+
+def build_sort_activity_filters(
+    df: pd.DataFrame,
+    selected_filters: dict[str, list[str]],
+) -> dict[str, list[str]]:
+    """Trim selected_filters down to only the columns actually narrowing
+    the row set, for a cleaner, more hand-readable exported JSON.
+
+    A column whose selected values are every available option for that
+    column isn't restricting anything (filter_dataframe() already treats
+    it as a no-op) -- dropping it here avoids exporting a "filters" block
+    that lists a column's entire value set for no reason.
+    """
+    narrowing_filters = {}
+    for column, allowed_values in selected_filters.items():
+        if column not in df.columns:
+            continue
+        all_options = get_column_filter_options(df, column)
+        if set(allowed_values) != set(all_options):
+            narrowing_filters[column] = list(allowed_values)
+    return narrowing_filters
+
+
+def build_sort_activity_json(
+    activity_name: str,
+    index_col: str,
+    sub_index_col: str | None,
+    filters: dict[str, list[str]],
+    line_columns: list[str],
+) -> bytes:
+    """Build a prepared Sort Cards activity file: UTF-8 JSON bytes ready
+    to hand off to a participant for digital/asynchronous sorting.
+
+    Categories are left empty ("open-ended") -- the participant creates
+    their own piles as they sort, same as the default behavior in Sort
+    Cards itself. See SORT_CARDS_JSON_FORMAT.md for the full format.
+    """
+    payload = {
+        "format": SORT_ACTIVITY_FORMAT,
+        "format_version": SORT_ACTIVITY_FORMAT_VERSION,
+        "activity_name": activity_name,
+        "index_col": index_col,
+        "sub_index_col": sub_index_col,
+        "filters": filters,
+        "line_columns": line_columns,
+        "categories": [],
+        "remaining_uids": None,
+        "created": datetime.now().isoformat(timespec="seconds"),
+        "updated": None,
+    }
+    return json.dumps(payload, indent=2, ensure_ascii=False).encode("utf-8")

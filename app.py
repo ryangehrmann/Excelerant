@@ -48,6 +48,8 @@ from tasks import (
     sort_dataframe,
     build_cards,
     generate_cards_html,
+    build_sort_activity_filters,
+    build_sort_activity_json,
     ProcessCardsResult,
     sanitize_activity_column_name,
     parse_uid_list,
@@ -192,16 +194,16 @@ TASKS = {
     ),
     
     # Orthography Development
-    "print_cards": TaskInfo(
-        id="print_cards",
-        name="Print Cards",
+    "generate_cards": TaskInfo(
+        id="generate_cards",
+        name="Generate Cards",
         category="Orthography Development",
-        description="Generate a printable HTML card deck for orthography-development card-sorting activities. Filter your database down to the rows you want, pick which columns appear on each card, and export a Letter-size deck (10 cards/page) with Lao- and IPA-aware fonts.",
+        description="Generate cards for orthography-development card-sorting activities. Filter your database down to the rows you want, pick which columns appear on each card, and export either a printable Letter-size HTML deck (10 cards/page, Lao- and IPA-aware fonts) for physical sorting, or a prepared-activity JSON to hand off for digital/asynchronous sorting in Sort Cards.",
         requirements=[
             "Database must have an 'index' column (a 'sub_index' column is used automatically if present)",
             "Each index (or index + sub_index) among the rows you export must be unique",
         ],
-        example="Input: Lexical database\nOutput: Printable HTML card deck for a card-sorting activity",
+        example="Input: Lexical database\nOutput: Printable HTML card deck and/or a Sort Cards activity JSON",
         youtube_url=None,
     ),
     "process_cards": TaskInfo(
@@ -211,7 +213,7 @@ TASKS = {
         description="Record the results of a card-sorting activity back into the database. Name the activity, then create a category for each pile the cards were sorted into and supply the UID (from the bottom-right of each card) for every card in that pile -- typed in by hand or read from photos by AI. A new column is added to the database with the category label on each matching row.",
         requirements=[
             "Database must have an 'index' column (a 'sub_index' column is used automatically if present)",
-            "Cards must have been generated with 'Print Cards' using the same index/sub-index columns, so the UIDs on the cards match the database",
+            "Cards must have been generated with 'Generate Cards' using the same index/sub-index columns, so the UIDs on the cards match the database",
         ],
         example="Input: Category 'i' -> UIDs 4, 9, 22.1\nOutput: Rows 4, 9, and 22.1 get 'i' in the new activity column",
         youtube_url=None,
@@ -284,7 +286,7 @@ ENABLED_TASKS = {
     "explode_entries",
     "segment_words",
     "update_entries_from_words",
-    "print_cards",
+    "generate_cards",
     "process_cards",
 }
 
@@ -319,7 +321,7 @@ class Screen:
     TASK_UPDATE_ENTRIES_FROM_WORDS = "task_update_entries_from_words"
     TASK_EXPLODE_ENTRIES = "task_explode_entries"
     TASK_SEGMENT_WORDS = "task_segment_words"
-    TASK_PRINT_CARDS = "task_print_cards"
+    TASK_GENERATE_CARDS = "task_generate_cards"
     TASK_PROCESS_CARDS = "task_process_cards"
 
 
@@ -779,7 +781,7 @@ def _render_task_detail(right_col):
                         "update_entries_from_words": Screen.TASK_UPDATE_ENTRIES_FROM_WORDS,
                         "explode_entries": Screen.TASK_EXPLODE_ENTRIES,
                         "segment_words": Screen.TASK_SEGMENT_WORDS,
-                        "print_cards": Screen.TASK_PRINT_CARDS,
+                        "generate_cards": Screen.TASK_GENERATE_CARDS,
                         "process_cards": Screen.TASK_PROCESS_CARDS,
                     }
                     target_screen = task_screens.get(task.id, Screen.TASK_PLACEHOLDER)
@@ -2540,7 +2542,7 @@ def screen_segment_words():
             st.dataframe(example_after, use_container_width=True, hide_index=True)
 
 
-def screen_print_cards():
+def screen_generate_cards():
     """Screen for exporting a printable card-sorting activity (Orthography Development)."""
 
     # Add vertical divider CSS
@@ -2556,7 +2558,7 @@ def screen_print_cards():
         unsafe_allow_html=True,
     )
 
-    st.title("Print Cards")
+    st.title("Generate Cards")
     st.markdown("---")
 
     # Two-column layout
@@ -2570,9 +2572,9 @@ def screen_print_cards():
         st.subheader("Step 1: Filter Database (Optional)")
         st.caption("Narrow down which rows are available before choosing card content. Leave blank to include everything.")
 
-        if "_print_cards_filter_epoch" not in st.session_state:
-            st.session_state._print_cards_filter_epoch = 0
-        epoch = st.session_state._print_cards_filter_epoch
+        if "_generate_cards_filter_epoch" not in st.session_state:
+            st.session_state._generate_cards_filter_epoch = 0
+        epoch = st.session_state._generate_cards_filter_epoch
 
         filter_columns = st.multiselect(
             "Filter by columns",
@@ -2592,7 +2594,7 @@ def screen_print_cards():
             )
 
         if st.button("Clear Filters", use_container_width=True, disabled=not filter_columns):
-            st.session_state._print_cards_filter_epoch = epoch + 1
+            st.session_state._generate_cards_filter_epoch = epoch + 1
             st.rerun()
 
         filtered_df = filter_dataframe(df, selected_filters)
@@ -2653,16 +2655,16 @@ def screen_print_cards():
         st.subheader("Step 3: Export")
 
         file_name = st.text_input(
-            "Export filename",
+            "Export name",
             value="sorting_activity",
             key="_sort_file_name",
-            help="The .html extension will be added automatically.",
+            help="Used as the HTML deck's filename, and (for the JSON) as the resulting sorting activity's name.",
         )
 
         can_generate = len(filtered_df) > 0 and len(line_columns) > 0
 
         generate_clicked = st.button(
-            "Generate Sorting Activity",
+            "Generate Cards",
             type="primary",
             use_container_width=True,
             disabled=not can_generate,
@@ -2675,20 +2677,21 @@ def screen_print_cards():
                 st.caption("Select at least one card line above.")
 
         if generate_clicked:
-            st.session_state._print_cards_generate_params = {
+            st.session_state._generate_cards_generate_params = {
                 "filtered_df": filtered_df,
                 "index_col": index_col,
                 "sub_index_col": sub_index_col,
                 "line_columns": line_columns,
                 "sort_by_col": sort_by_col,
                 "file_name": file_name,
+                "selected_filters": selected_filters,
             }
             st.rerun()
 
         st.markdown("")
 
         if st.button("Back to Main Menu", use_container_width=True):
-            for key in ["_print_cards_generate_params", "_print_cards_export_result"]:
+            for key in ["_generate_cards_generate_params", "_generate_cards_export_result"]:
                 if key in st.session_state:
                     del st.session_state[key]
             go_back_to_menu()
@@ -2698,11 +2701,11 @@ def screen_print_cards():
         st.subheader("Output")
 
         # Process generation if triggered
-        if "_print_cards_generate_params" in st.session_state:
-            params = st.session_state._print_cards_generate_params
-            del st.session_state._print_cards_generate_params
+        if "_generate_cards_generate_params" in st.session_state:
+            params = st.session_state._generate_cards_generate_params
+            del st.session_state._generate_cards_generate_params
 
-            with st.spinner("Building sorting activity..."):
+            with st.spinner("Building cards..."):
                 build_result = build_cards(
                     df=params["filtered_df"],
                     index_col=params["index_col"],
@@ -2711,52 +2714,79 @@ def screen_print_cards():
                     sort_by_col=params["sort_by_col"],
                 )
 
-                html = generate_cards_html(build_result.cards) if build_result.success else None
+                if build_result.success:
+                    html = generate_cards_html(build_result.cards)
+                    narrowing_filters = build_sort_activity_filters(
+                        df=df,
+                        selected_filters=params["selected_filters"],
+                    )
+                    json_bytes = build_sort_activity_json(
+                        activity_name=params["file_name"],
+                        index_col=params["index_col"],
+                        sub_index_col=params["sub_index_col"],
+                        filters=narrowing_filters,
+                        line_columns=params["line_columns"],
+                    )
+                else:
+                    html = None
+                    json_bytes = None
 
-            st.session_state._print_cards_export_result = {
+            st.session_state._generate_cards_export_result = {
                 "build_result": build_result,
                 "html": html,
+                "json_bytes": json_bytes,
                 "file_name": params["file_name"],
             }
             st.session_state._scroll_to_top = True
             st.rerun()
 
-        if "_print_cards_export_result" in st.session_state:
-            export = st.session_state._print_cards_export_result
+        if "_generate_cards_export_result" in st.session_state:
+            export = st.session_state._generate_cards_export_result
             build_result: CardBuildResult = export["build_result"]
 
             if build_result.success:
                 st.success(
-                    f"Sorting activity generated: {build_result.included_rows:,} card(s) "
+                    f"Cards generated: {build_result.included_rows:,} card(s) "
                     f"from {build_result.total_rows:,} row(s)."
                 )
 
                 st.markdown("---")
 
-                safe_name = export["file_name"].strip() or "sorting_activity"
-                if not safe_name.endswith(".html"):
-                    safe_name += ".html"
+                base_name = export["file_name"].strip() or "sorting_activity"
+                html_name = base_name if base_name.endswith(".html") else base_name + ".html"
+                json_name = base_name if base_name.endswith(".json") else base_name + ".json"
 
                 btn_col1, btn_col2 = st.columns(2)
 
                 with btn_col1:
                     st.download_button(
-                        label=f"Download {safe_name}",
+                        label=f"Download {html_name}",
                         data=export["html"].encode("utf-8"),
-                        file_name=safe_name,
+                        file_name=html_name,
                         mime="text/html",
                         type="primary",
                         use_container_width=True,
+                        help="Printable HTML card deck for physical sorting.",
                     )
 
                 with btn_col2:
-                    if st.button("Return to Main Menu", use_container_width=True, key="return_after_sorting"):
-                        del st.session_state._print_cards_export_result
-                        go_back_to_menu()
+                    st.download_button(
+                        label=f"Download {json_name}",
+                        data=export["json_bytes"],
+                        file_name=json_name,
+                        mime="application/json",
+                        type="primary",
+                        use_container_width=True,
+                        help="Prepared activity file for digital/asynchronous sorting in Sort Cards.",
+                    )
+
+                if st.button("Return to Main Menu", use_container_width=True, key="return_after_sorting"):
+                    del st.session_state._generate_cards_export_result
+                    go_back_to_menu()
 
                 st.markdown("---")
 
-                st.markdown("**Preview:**")
+                st.markdown("**Preview (HTML deck):**")
                 components.html(export["html"], height=500, scrolling=True)
 
             else:
@@ -2772,7 +2802,7 @@ def screen_print_cards():
                 st.markdown("---")
 
                 if st.button("Back to Configuration", use_container_width=True):
-                    del st.session_state._print_cards_export_result
+                    del st.session_state._generate_cards_export_result
                     st.rerun()
 
         else:
@@ -2787,17 +2817,19 @@ def screen_print_cards():
 
             st.markdown("---")
 
-            st.markdown("**About Sorting Activities**")
+            st.markdown("**About Generating Cards**")
             st.markdown(
                 """
-                This task exports a printable HTML deck of cards for orthography-development
-                card-sorting activities with speakers.
+                This task generates cards for orthography-development card-sorting activities
+                with speakers, for either physical or digital sorting.
 
                 1. **Filter** (optional) narrows down which rows are eligible.
                 2. **Card lines** pick up to 3 columns to display on each card (e.g. a native
                    script gloss, an English gloss, and a phonetic transcription).
-                3. **Export** generates a Letter-size HTML file, 10 cards per page, with
-                   automatic Lao-script and IPA font handling.
+                3. **Export** generates a Letter-size HTML deck (10 cards per page, with
+                   automatic Lao-script and IPA font handling) for physical sorting, and a
+                   prepared-activity JSON file to hand off for digital/asynchronous sorting in
+                   Sort Cards.
                 """
             )
 
@@ -3260,7 +3292,7 @@ SCREEN_FUNCTIONS: dict[str, Callable] = {
     Screen.TASK_UPDATE_ENTRIES_FROM_WORDS: screen_update_entries_from_words,
     Screen.TASK_EXPLODE_ENTRIES: screen_explode_entries,
     Screen.TASK_SEGMENT_WORDS: screen_segment_words,
-    Screen.TASK_PRINT_CARDS: screen_print_cards,
+    Screen.TASK_GENERATE_CARDS: screen_generate_cards,
     Screen.TASK_PROCESS_CARDS: screen_process_cards,
 }
 
