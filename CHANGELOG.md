@@ -5,6 +5,17 @@ through git history in this folder — no more copy-pasting a new `v 0.X`
 folder per version. Older pre-git snapshots live in `../archive/`.
 
 ## v0.5 (current)
+- 2026-08-07 — Add Sort Cards task (stage 1): digital, in-app card sorting
+  as an alternative to printing, with a card display styled to match the
+  physical cards, piles with quick-reference previews and whole-pile
+  removal, and quick-add by UID. Never writes to the database directly --
+  results always go through Process Cards, same as every other input path.
+- 2026-08-07 — Rename Print Cards to Generate Cards; its export step now
+  produces a Sort Cards "prepared activity" JSON alongside the printable
+  HTML deck, from the same filter/card-content configuration
+- 2026-08-07 — Add Process Cards task: record card-sorting results into the
+  database by typing UIDs manually or via an AI-assisted photo-reading
+  workflow (paste a vision AI's reading of category-labeled workshop photos)
 - 2026-08-06 — Add Orthography Development branch with Export Sorting Activity task
 
 ## v0.4
