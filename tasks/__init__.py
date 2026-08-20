@@ -92,6 +92,19 @@ from .sort_cards import (
     find_card_index_by_uid,
 )
 
+from .script_converter.pipelines.registry import PIPELINES as SCRIPT_CONVERTER_PIPELINES
+from .script_converter.processors.xlsx_input import (
+    load_xlsx,
+    detect_entry_column,
+    detect_index_column,
+    validate_entry_column,
+    prepare_df,
+)
+from .script_converter.processors.xlsx_output import FIXED_COLS, write_xlsx
+from .script_converter.processors.text_input import read_text_file
+from .script_converter.processors.text_output import build_ipa_only_docx, build_interlinear_html
+from .script_converter.core.conversion import find_unknown_chars
+
 __all__ = [
     # upload_database
     "REQUIRED_COLUMNS",
@@ -159,4 +172,17 @@ __all__ = [
     # sort_cards
     "generate_single_card_html",
     "find_card_index_by_uid",
+    # script_converter
+    "SCRIPT_CONVERTER_PIPELINES",
+    "load_xlsx",
+    "detect_entry_column",
+    "detect_index_column",
+    "validate_entry_column",
+    "prepare_df",
+    "FIXED_COLS",
+    "write_xlsx",
+    "read_text_file",
+    "build_ipa_only_docx",
+    "build_interlinear_html",
+    "find_unknown_chars",
 ]
