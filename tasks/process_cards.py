@@ -223,8 +223,18 @@ def process_cards_manual(
         for uid in uids:
             uid_to_categories.setdefault(uid, []).append(label)
 
-    duplicate_uids = sorted(uid for uid, labels in uid_to_categories.items() if len(labels) > 1)
-    unmatched_uids = sorted(uid for uid in uid_to_categories if uid not in lookup)
+    # Include the offending category label(s) alongside each bad UID, so the
+    # user can find the input error rather than just knowing it exists.
+    duplicate_uids = [
+        f"{uid} (categories: {', '.join(labels)})"
+        for uid, labels in sorted(uid_to_categories.items())
+        if len(labels) > 1
+    ]
+    unmatched_uids = [
+        f"{uid} (category: {', '.join(labels)})"
+        for uid, labels in sorted(uid_to_categories.items())
+        if uid not in lookup
+    ]
 
     if duplicate_uids or unmatched_uids:
         error_parts = []
