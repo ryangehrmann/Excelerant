@@ -34,6 +34,34 @@ def screen_upload_database():
     with config_col:
         st.subheader("Upload")
 
+        if st.session_state.get("analysis_mode") == "phonological":
+            if st.button("Load an Example Database", use_container_width=True):
+                example_path = "example_data/example_data.xlsx"
+                valid_sheets = find_valid_sheets(example_path)
+
+                if not valid_sheets:
+                    st.error("Could not find a valid sheet in the example database.")
+                else:
+                    result = load_sheet(example_path, valid_sheets[0])
+
+                    if not result.success:
+                        st.error(f"Error loading example database: {result.error}")
+                    else:
+                        validation = validate_database(result.df)
+
+                        if not validation.valid:
+                            st.error("The example database failed validation.")
+                        else:
+                            st.session_state.database = result.df
+                            st.session_state.database_validated = True
+                            st.session_state.database_filename = "example_data.xlsx"
+                            st.session_state.database_sheet_name = valid_sheets[0]
+
+                            st.success("Example database loaded!")
+                            go_back_to_menu()
+
+            st.markdown("*— or upload your own —*")
+
         uploaded_file = st.file_uploader(
             "Select your spreadsheet file",
             type=["xlsx", "xls", "ods"],
