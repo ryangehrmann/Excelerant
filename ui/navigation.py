@@ -16,13 +16,16 @@ class Screen:
     MAIN_MENU_PHONOLOGICAL = "main_menu_phonological"
     MAIN_MENU_ORTHOGRAPHY = "main_menu_orthography"
     MAIN_MENU_ACOUSTIC = "main_menu_acoustic"
+    MAIN_MENU_COLLECT = "main_menu_collect"
     ORTHOGRAPHY_HUB = "orthography_hub"
+    COLLECT_LEXICAL_DATA_HUB = "collect_lexical_data_hub"
     SCRIPT_CONVERTER = "script_converter"
     ABOUT = "about"
     TUTORIAL = "tutorial"
     # Task screens - add as needed
     TASK_PLACEHOLDER = "task_placeholder"
     TASK_CREATE_DATA_COLLECTION_SCRIPT = "task_create_data_collection_script"
+    TASK_CREATE_PROMPTS_LIST = "task_create_prompts_list"
     TASK_ADD_AUDIO_LINKS = "task_add_audio_links"
     TASK_UPDATE_ENTRIES_FROM_WORDS = "task_update_entries_from_words"
     TASK_EXPLODE_ENTRIES = "task_explode_entries"
@@ -45,8 +48,11 @@ def init_session_state():
         "database_sheet_name": None,
         # Main menu state
         "selected_task": None,
-        # Analysis mode: "phonological" or "acoustic"
+        # Analysis mode: "collect", "phonological", "orthography", or "acoustic"
         "analysis_mode": None,
+        # Collection platform chosen on the Collect Lexical Data screen:
+        # "speechrecorder" (PC/Mac) or "prompts" (Android)
+        "collection_target": None,
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -67,6 +73,8 @@ def go_back_to_menu():
         navigate_to(Screen.MAIN_MENU_ACOUSTIC)
     elif mode == "orthography":
         navigate_to(Screen.MAIN_MENU_ORTHOGRAPHY)
+    elif mode == "collect":
+        navigate_to(Screen.MAIN_MENU_COLLECT)
     else:
         navigate_to(Screen.MAIN_MENU_PHONOLOGICAL)
 

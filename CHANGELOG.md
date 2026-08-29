@@ -5,6 +5,20 @@ through git history in this folder — no more copy-pasting a new `v 0.X`
 folder per version. Older pre-git snapshots live in `../archive/`.
 
 ## v0.5 (current)
+- 2026-08-29 — Restructure the welcome menu into five sections: "Collect
+  Lexical Data" and (grayed, staged) "Manage Lexical Data" on the left, then
+  "Analyze Phonology", "Develop Orthography", and (grayed) "Analyze Phonetics"
+  (renamed from Phonology / Orthography / Acoustic Phonetics)
+- 2026-08-29 — Add "Collect Lexical Data" section: a fork between building a
+  script for SpeechRecorder (PC/Mac, existing task, moved here out of the
+  Phonology menu) and the Prompts Android app. New "Create Prompts List"
+  task exports an index/gloss_v/gloss_e/ipa CSV or XLSX the Prompts app imports
+- 2026-08-29 — Prompts app published at github.com/ryangehrmann/Prompts
+  (public repo, signed v1.0 APK on GitHub Releases); the Create Prompts List
+  screen and the Collect Lexical Data fork now link straight to the APK
+- 2026-08-29 — Collect Lexical Data uploads only require `index` + `gloss`
+  (no `entry`/transcription column, which doesn't exist yet at collection time);
+  other modes still require the full `index`/`entry`/`gloss` database
 - 2026-08-07 — Add Sort Cards task (stage 1): digital, in-app card sorting
   as an alternative to printing, with a card display styled to match the
   physical cards, piles with quick-reference previews and whole-pile

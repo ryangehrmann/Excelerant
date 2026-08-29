@@ -61,6 +61,7 @@ def _render_task_detail(right_col):
                     # Navigate to task screen based on selected task
                     task_screens = {
                         "create_data_collection_script": Screen.TASK_CREATE_DATA_COLLECTION_SCRIPT,
+                        "create_prompts_list": Screen.TASK_CREATE_PROMPTS_LIST,
                         "add_audio_links": Screen.TASK_ADD_AUDIO_LINKS,
                         "update_entries_from_words": Screen.TASK_UPDATE_ENTRIES_FROM_WORDS,
                         "explode_entries": Screen.TASK_EXPLODE_ENTRIES,

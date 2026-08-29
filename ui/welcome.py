@@ -24,10 +24,6 @@ def screen_welcome():
             """
             ### Welcome!
 
-            Excelerant helps you create and process lexical databases for
-            phonological / phonetic analysis and participatory work in
-            orthography development.
-
             What would you like to work on?
             """
         )
@@ -49,22 +45,36 @@ def screen_welcome():
             unsafe_allow_html=True,
         )
 
-        # Three analysis path buttons side by side
-        btn_left, btn_mid, btn_right = st.columns(3)
+        # Analysis path buttons side by side
+        btn_collect, btn_manage, btn_phon, btn_ortho, btn_acoustic = st.columns(5)
 
-        with btn_left:
-            if st.button("Phonology", use_container_width=True, type="primary"):
+        with btn_collect:
+            if st.button("Collect Lexical Data", use_container_width=True, type="primary"):
+                st.session_state.analysis_mode = "collect"
+                navigate_to(Screen.COLLECT_LEXICAL_DATA_HUB)
+
+        with btn_manage:
+            st.button(
+                "Manage Lexical Data",
+                use_container_width=True,
+                type="primary",
+                disabled=True,
+                help="Coming soon",
+            )
+
+        with btn_phon:
+            if st.button("Analyze Phonology", use_container_width=True, type="primary"):
                 st.session_state.analysis_mode = "phonological"
                 navigate_to(Screen.UPLOAD_DATABASE)
 
-        with btn_mid:
-            if st.button("Orthography", use_container_width=True, type="primary"):
+        with btn_ortho:
+            if st.button("Develop Orthography", use_container_width=True, type="primary"):
                 st.session_state.analysis_mode = "orthography"
                 navigate_to(Screen.ORTHOGRAPHY_HUB)
 
-        with btn_right:
+        with btn_acoustic:
             st.button(
-                "Acoustic Phonetics",
+                "Analyze Phonetics",
                 use_container_width=True,
                 type="primary",
                 disabled=True,

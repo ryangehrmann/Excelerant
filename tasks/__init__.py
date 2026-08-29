@@ -8,6 +8,7 @@ UI code remains in app.py; these modules handle the actual processing.
 
 from .upload_database import (
     REQUIRED_COLUMNS,
+    COLLECT_REQUIRED_COLUMNS,
     ValidationResult,
     SheetLoadResult,
     find_valid_sheets,
@@ -18,6 +19,12 @@ from .upload_database import (
 from .create_data_collection_script import (
     ScriptResult,
     generate_script,
+)
+
+from .create_prompts_list import (
+    PROMPTS_COLUMNS,
+    PromptsListResult,
+    generate_prompts_list,
 )
 
 from .add_audio_links import (
@@ -108,6 +115,7 @@ from .script_converter.core.conversion import find_unknown_chars
 __all__ = [
     # upload_database
     "REQUIRED_COLUMNS",
+    "COLLECT_REQUIRED_COLUMNS",
     "ValidationResult",
     "SheetLoadResult",
     "find_valid_sheets",
@@ -116,6 +124,10 @@ __all__ = [
     # create_data_collection_script
     "ScriptResult",
     "generate_script",
+    # create_prompts_list
+    "PROMPTS_COLUMNS",
+    "PromptsListResult",
+    "generate_prompts_list",
     # add_audio_links
     "FolderAnalysis",
     "FilenameAnalysis",

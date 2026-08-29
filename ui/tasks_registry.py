@@ -21,11 +21,11 @@ class TaskInfo:
 
 # Define all tasks
 TASKS = {
-    # Configure Audio
+    # Collect Lexical Data
     "create_data_collection_script": TaskInfo(
         id="create_data_collection_script",
         name="Create Data Collection Script",
-        category="Configure Audio",
+        category="Collect Lexical Data",
         description="Generate an XML script for [SpeechRecorder](https://www.bas.uni-muenchen.de/Bas/software/speechrecorder/) to collect audio recordings. Maps database columns to prompt fields (gloss, index, frame, extra info) and supports multiple token repetitions.",
         requirements=[
             "Database must have 'index' and 'gloss' columns populated",
@@ -34,6 +34,20 @@ TASKS = {
         example="Input: Lexical database\nOutput: XML script for SpeechRecorder with prompts for each entry",
         youtube_url=None,
     ),
+    "create_prompts_list": TaskInfo(
+        id="create_prompts_list",
+        name="Create Prompts List (Android)",
+        category="Collect Lexical Data",
+        description="Generate a prompt-list file for the **Prompts** Android app - an offline, one-prompt-at-a-time audio elicitation app for recording in the field straight from a phone. Maps database columns to the app's fields (vernacular gloss shown large, optional English gloss and IPA for the surveyor) and exports a .csv or .xlsx the app imports.",
+        requirements=[
+            "Database must have an 'index' column and a column of text to prompt with",
+            "Each index value must be unique (the app saves one recording per index)",
+        ],
+        example="Input: Lexical database\nOutput: prompts.csv (index, gloss_v, gloss_e, ipa) for the Prompts app",
+        youtube_url=None,
+    ),
+
+    # Configure Audio
     "add_audio_links": TaskInfo(
         id="add_audio_links",
         name="Add Audio File Links to Database",
@@ -215,6 +229,7 @@ TASKS = {
 
 # Group tasks by category (preserving order)
 TASK_CATEGORIES = [
+    "Collect Lexical Data",
     "Configure Audio",
     "Configure Transcriptions",
     "Phonological Analysis",
@@ -225,6 +240,7 @@ TASK_CATEGORIES = [
 # Tasks that are currently implemented and enabled
 ENABLED_TASKS = {
     "create_data_collection_script",
+    "create_prompts_list",
     "add_audio_links",
     "explode_entries",
     "segment_words",
@@ -238,6 +254,7 @@ ENABLED_TASKS = {
 # (Tasks are filtered by both ENABLED_TASKS and this mapping, so a task
 # belongs on exactly the menu(s) for its category.)
 MENU_CATEGORIES = {
+    "collect": ["Collect Lexical Data"],
     "phonological": ["Configure Audio", "Configure Transcriptions", "Phonological Analysis"],
     "orthography": ["Orthography Development"],
     "acoustic": ["Acoustic Phonetic Analysis"],
