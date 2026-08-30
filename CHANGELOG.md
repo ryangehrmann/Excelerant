@@ -5,6 +5,42 @@ through git history in this folder — no more copy-pasting a new `v 0.X`
 folder per version. Older pre-git snapshots live in `../archive/`.
 
 ## v0.5 (current)
+- 2026-08-30 — Fix "Copy XML Script to Clipboard": it wrote raw UTF-8 bytes
+  (mojibake for non-ASCII scripts like Lao). Now decodes the bytes back
+  through UTF-8 in the browser (`TextDecoder` on `atob` output).
+- 2026-08-30 — Drop decorative emoji from the Collect Data section headings
+  and link labels (minimalist/professional direction going forward).
+- 2026-08-30 — Reorder the Collect Data flow: a landing screen forks between
+  a standard word list tool and a custom upload; the SpeechRecorder-vs-Prompts
+  platform choice now comes *after* choosing a tool / uploading a database
+  (new `screen_collect_platform`). The standard word list catalog is its own
+  fork off the landing screen (removed from the upload screen); the tool page
+  is tailored to the chosen platform.
+- 2026-08-30 — Bundle the Big Excelerant Word List (BEWL) v1.0 as a standard
+  word list tool (`standard_word_lists/bewl_v01/`: 1,886 items, English + Lao
+  glosses, adapted from the EFEO-CNRS-SOAS list, with its full documentation).
+- 2026-08-30 — Standard word list tool page streamlined to three actions:
+  download the word list spreadsheet, download its documentation (a tool's
+  `documentation.md` is served as a self-contained `.html` page so users
+  don't need a Markdown viewer), or generate the platform's import file
+  (SpeechRecorder XML with copy/paste instructions, or a Prompts `.csv`/
+  `.xlsx`). A tool folder may set `download_filename`. Adds `markdown` dep.
+- 2026-08-29 — Add "Standard Word List Tools" to the SpeechRecorder path of
+  Collect Lexical Data: bundled word lists under `standard_word_lists/` (one
+  folder per tool: `tool.toml` with `[[gloss_languages]]` + `wordlist.csv`/
+  `.xlsx` with `index`, one column per gloss language, optional `extra`),
+  browsable from the upload screen. Each tool's info page lets the user pick
+  the primary gloss language and an optional secondary one, a token count,
+  and an optional user-typed sentence frame (`___` marks where the primary
+  gloss goes), then one-click XML download. Runs through the same generator
+  as Create Data Collection Script; the copy / download / instructions block
+  is now a shared `render_script_output` helper (and the custom screen gains
+  a Download XML button).
+- 2026-08-29 — Move audio-linking and transcription-prep tasks (Add Audio
+  File Links, Explode Entries, Segment Words, Check Database Formatting) out
+  of Analyze Phonology into "Manage Lexical Data", now an active section.
+  Analyze Phonology is grayed until real phonological-analysis tools land.
+  The four per-mode task menus are now one shared `_render_mode_menu` helper.
 - 2026-08-29 — Restructure the welcome menu into five sections: "Collect
   Lexical Data" and (grayed, staged) "Manage Lexical Data" on the left, then
   "Analyze Phonology", "Develop Orthography", and (grayed) "Analyze Phonetics"

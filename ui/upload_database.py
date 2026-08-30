@@ -12,7 +12,7 @@ from tasks import (
     load_sheet,
     validate_database,
 )
-from ui.navigation import Screen, navigate_to, go_back_to_menu
+from ui.navigation import Screen, navigate_to, proceed_after_upload
 
 
 def screen_upload_database():
@@ -48,7 +48,7 @@ def screen_upload_database():
     with config_col:
         st.subheader("Upload")
 
-        if st.session_state.get("analysis_mode") in ("phonological", "collect"):
+        if st.session_state.get("analysis_mode") in ("phonological", "collect", "manage"):
             if st.button("Load an Example Database", use_container_width=True):
                 example_path = "example_data/example_data.xlsx"
                 valid_sheets = find_valid_sheets(example_path, required_columns)
@@ -72,7 +72,7 @@ def screen_upload_database():
                             st.session_state.database_sheet_name = valid_sheets[0]
 
                             st.success("Example database loaded!")
-                            go_back_to_menu()
+                            proceed_after_upload()
 
             st.markdown("*— or upload your own —*")
 
@@ -150,7 +150,7 @@ def screen_upload_database():
                                     del st.session_state[key]
 
                             st.success("Database loaded!")
-                            go_back_to_menu()
+                            proceed_after_upload()
 
             else:
                 # Multiple valid sheets - user must choose
@@ -218,7 +218,7 @@ def screen_upload_database():
                                         del st.session_state[key]
 
                                 st.success("Database loaded!")
-                                go_back_to_menu()
+                                proceed_after_upload()
 
         st.markdown("---")
 

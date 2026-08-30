@@ -255,7 +255,9 @@ ENABLED_TASKS = {
 # belongs on exactly the menu(s) for its category.)
 MENU_CATEGORIES = {
     "collect": ["Collect Lexical Data"],
-    "phonological": ["Configure Audio", "Configure Transcriptions", "Phonological Analysis"],
+    # Audio linking + transcription prep - database housekeeping, not analysis.
+    "manage": ["Configure Audio", "Configure Transcriptions"],
+    "phonological": ["Phonological Analysis"],
     "orthography": ["Orthography Development"],
     "acoustic": ["Acoustic Phonetic Analysis"],
 }

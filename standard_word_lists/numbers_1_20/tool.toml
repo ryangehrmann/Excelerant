@@ -1,0 +1,29 @@
+name = "Numbers 1–20"
+summary = "A quick 20-item count for checking recording levels and warming up a speaker before the main session."
+recommended_tokens = 2
+order = 20
+
+[[gloss_languages]]
+label = "English"
+column = "gloss_en"
+
+[[gloss_languages]]
+label = "Numeral"
+column = "gloss_num"
+
+description = """
+A short, universal list: the numbers **one** through **twenty**. It isn't
+meant as analytical data — it's the list to record first at every session.
+
+**Use it to:**
+
+- check microphone placement, input gain, and clipping before you record
+  anything you care about;
+- give the speaker a few low-stakes prompts to settle into the task;
+- get a comparable warm-up sample across speakers and sessions.
+
+Pick the English words or the bare numerals as the primary prompt; add the
+other as a secondary gloss if you like. Two tokens each by default.
+
+**Source:** Compiled for Excelerant. Public domain.
+"""

@@ -19,6 +19,8 @@ from ui.upload_database import screen_upload_database
 from ui.main_menus import (
     screen_orthography_hub,
     screen_collect_lexical_data_hub,
+    screen_collect_platform,
+    screen_main_menu_manage,
     screen_main_menu_phonological,
     screen_main_menu_orthography,
     screen_main_menu_acoustic,
@@ -27,6 +29,7 @@ from ui.main_menus import (
 )
 from ui.create_data_collection_script import screen_create_data_collection_script
 from ui.create_prompts_list import screen_create_prompts_list
+from ui.standard_word_lists import screen_standard_word_lists
 from ui.add_audio_links import screen_add_audio_links
 from ui.update_entries_from_words import screen_update_entries_from_words
 from ui.explode_entries import screen_explode_entries
@@ -44,8 +47,11 @@ SCREEN_FUNCTIONS: dict[str, Callable] = {
     Screen.MAIN_MENU_ORTHOGRAPHY: screen_main_menu_orthography,
     Screen.MAIN_MENU_ACOUSTIC: screen_main_menu_acoustic,
     Screen.MAIN_MENU_COLLECT: screen_main_menu_collect,
+    Screen.MAIN_MENU_MANAGE: screen_main_menu_manage,
     Screen.ORTHOGRAPHY_HUB: screen_orthography_hub,
     Screen.COLLECT_LEXICAL_DATA_HUB: screen_collect_lexical_data_hub,
+    Screen.COLLECT_PLATFORM: screen_collect_platform,
+    Screen.STANDARD_WORD_LISTS: screen_standard_word_lists,
     Screen.SCRIPT_CONVERTER: screen_script_converter,
     Screen.ABOUT: screen_about,
     Screen.TUTORIAL: screen_tutorial,

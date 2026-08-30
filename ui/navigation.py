@@ -13,12 +13,15 @@ class Screen:
     WELCOME = "welcome"
     UPLOAD_DATABASE = "upload_database"
     MAIN_MENU = "main_menu"
+    MAIN_MENU_MANAGE = "main_menu_manage"
     MAIN_MENU_PHONOLOGICAL = "main_menu_phonological"
     MAIN_MENU_ORTHOGRAPHY = "main_menu_orthography"
     MAIN_MENU_ACOUSTIC = "main_menu_acoustic"
     MAIN_MENU_COLLECT = "main_menu_collect"
     ORTHOGRAPHY_HUB = "orthography_hub"
     COLLECT_LEXICAL_DATA_HUB = "collect_lexical_data_hub"
+    COLLECT_PLATFORM = "collect_platform"
+    STANDARD_WORD_LISTS = "standard_word_lists"
     SCRIPT_CONVERTER = "script_converter"
     ABOUT = "about"
     TUTORIAL = "tutorial"
@@ -48,11 +51,15 @@ def init_session_state():
         "database_sheet_name": None,
         # Main menu state
         "selected_task": None,
-        # Analysis mode: "collect", "phonological", "orthography", or "acoustic"
+        # Analysis mode: "collect", "manage", "phonological", "orthography", or "acoustic"
         "analysis_mode": None,
-        # Collection platform chosen on the Collect Lexical Data screen:
-        # "speechrecorder" (PC/Mac) or "prompts" (Android)
+        # Collect Data: "standard" (bundled word list tool) or "custom" (upload)
+        "collect_source": None,
+        # Collect Data recording platform: "speechrecorder" (PC/Mac) or
+        # "prompts" (Android)
         "collection_target": None,
+        # Folder id of the standard word list tool being viewed, if any.
+        "selected_word_list_tool": None,
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -75,8 +82,20 @@ def go_back_to_menu():
         navigate_to(Screen.MAIN_MENU_ORTHOGRAPHY)
     elif mode == "collect":
         navigate_to(Screen.MAIN_MENU_COLLECT)
+    elif mode == "manage":
+        navigate_to(Screen.MAIN_MENU_MANAGE)
     else:
         navigate_to(Screen.MAIN_MENU_PHONOLOGICAL)
+
+
+def proceed_after_upload():
+    """Where the upload screen sends the user once a database is loaded.
+    Collect Data goes on to the recording-platform choice; every other mode
+    goes straight to its task menu."""
+    if st.session_state.get("analysis_mode") == "collect":
+        navigate_to(Screen.COLLECT_PLATFORM)
+    else:
+        go_back_to_menu()
 
 
 def render_scroll_to_top():

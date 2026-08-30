@@ -1,0 +1,41 @@
+name = "Big Excelerant Word List (BEWL) — v1.0"
+summary = "A 1,886-item elicitation list for Mainland Southeast Asia, with English and Lao glosses, adapted from the EFEO-CNRS-SOAS word list."
+recommended_tokens = 1
+order = 10
+download_filename = "BEWL_v1.0.xlsx"
+
+[[gloss_languages]]
+label = "English"
+column = "gloss_english"
+
+[[gloss_languages]]
+label = "Lao"
+column = "gloss_lao"
+
+description = """
+The **BEWL** is a large, semantically organised elicitation list for
+**efficiently audio-recording lexical data** in Mainland Southeast Asia —
+for language documentation, phonological analysis, and orthography
+development.
+
+Version 1.0 has **1,886 entries**, each with an English gloss, a Lao gloss,
+a four-level semantic classification, and a cross-reference to the
+EFEO-CNRS-SOAS Word List (Pain et al. 2022), which it revises.
+
+The developers' goal was a **more standardised glossing style** than the
+source list: glosses that remove ambiguity and elicit a predictable word
+class, so a consultant reading a gloss in a language they know well
+immediately grasps what is being asked for.
+
+**Developers:** Ryan Gehrmann & Zack Anderson. Lao glosses by Zack Anderson
+with native-speaker consultants. Burmese glosses are planned for v2.
+
+Pick **English** or **Lao** as the prompt language below, then download the
+word list, a SpeechRecorder script, or a Prompts list. The full
+documentation (data dictionary, semantic scheme, glossing conventions,
+known limitations, citation) ships alongside the word list — download it
+below.
+
+*Version 1.0 is a working release: Lao coverage of the full source list and
+a frequency-based ordering are still to come.*
+"""

@@ -64,7 +64,7 @@ def screen_create_prompts_list():
         )
 
         vernacular_col = st.selectbox(
-            "Vernacular / prompt column  →  shown large",
+            "Vernacular / prompt column (shown large)",
             options=columns,
             index=_default_col(
                 columns,
@@ -80,14 +80,14 @@ def screen_create_prompts_list():
         st.markdown("**Optional**")
 
         english_col = st.selectbox(
-            "English gloss column  →  shown small, below",
+            "English gloss column (shown small, below)",
             options=optional_columns,
             index=(optional_columns.index("gloss") if "gloss" in optional_columns else 0),
             help="A second gloss shown under the vernacular text.",
         )
 
         ipa_col = st.selectbox(
-            "IPA column  →  shown small, bottom-right",
+            "IPA column (shown small, bottom-right)",
             options=optional_columns,
             index=0,
             help="An IPA transcription shown for the surveyor's reference.",
@@ -206,7 +206,7 @@ def _render_get_prompts_app():
     """Explain how to obtain the Prompts APK."""
     st.markdown("---")
     if PROMPTS_DOWNLOAD_URL:
-        st.markdown(f"**[Download Prompts (Android APK) →]({PROMPTS_DOWNLOAD_URL})**")
+        st.markdown(f"**[Download Prompts (Android APK)]({PROMPTS_DOWNLOAD_URL})**")
         st.caption(
             "Sideload: on the device, allow installs from your browser / files "
             "app, open the APK, and confirm. Play Protect may warn about an app "

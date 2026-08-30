@@ -1,6 +1,7 @@
 """
 ui/welcome.py
-Landing screen: the three top-level analysis-path buttons.
+Landing screen: the five top-level section buttons (Collect Data, Manage
+Database, Analyze Phonology, Develop Orthography, Analyze Phonetics).
 """
 
 import streamlit as st
@@ -9,7 +10,7 @@ from ui.navigation import Screen, navigate_to
 
 
 def screen_welcome():
-    """Welcome screen with three options."""
+    """Welcome screen: pick a top-level section."""
 
     # Center the welcome content
     col1, col2, col3 = st.columns([1, 2, 1])
@@ -45,36 +46,37 @@ def screen_welcome():
             unsafe_allow_html=True,
         )
 
-        # Analysis path buttons side by side
+        # Analysis path buttons side by side. Each label is forced onto two
+        # rows (markdown hard break) so all five buttons are the same height.
         btn_collect, btn_manage, btn_phon, btn_ortho, btn_acoustic = st.columns(5)
 
         with btn_collect:
-            if st.button("Collect Lexical Data", use_container_width=True, type="primary"):
+            if st.button("Collect  \nData", use_container_width=True, type="primary"):
                 st.session_state.analysis_mode = "collect"
                 navigate_to(Screen.COLLECT_LEXICAL_DATA_HUB)
 
         with btn_manage:
+            if st.button("Manage  \nDatabase", use_container_width=True, type="primary"):
+                st.session_state.analysis_mode = "manage"
+                navigate_to(Screen.UPLOAD_DATABASE)
+
+        with btn_phon:
             st.button(
-                "Manage Lexical Data",
+                "Analyze  \nPhonology",
                 use_container_width=True,
                 type="primary",
                 disabled=True,
-                help="Coming soon",
+                help="Phonology analysis tools coming soon",
             )
 
-        with btn_phon:
-            if st.button("Analyze Phonology", use_container_width=True, type="primary"):
-                st.session_state.analysis_mode = "phonological"
-                navigate_to(Screen.UPLOAD_DATABASE)
-
         with btn_ortho:
-            if st.button("Develop Orthography", use_container_width=True, type="primary"):
+            if st.button("Develop  \nOrthography", use_container_width=True, type="primary"):
                 st.session_state.analysis_mode = "orthography"
                 navigate_to(Screen.ORTHOGRAPHY_HUB)
 
         with btn_acoustic:
             st.button(
-                "Analyze Phonetics",
+                "Analyze  \nPhonetics",
                 use_container_width=True,
                 type="primary",
                 disabled=True,
