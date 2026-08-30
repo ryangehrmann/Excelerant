@@ -224,6 +224,20 @@ def load_word_list(tool: WordListTool) -> pd.DataFrame:
         df = pd.read_csv(path)
 
     df.columns = [str(c).strip().lower() for c in df.columns]
+
+    # Always present the word list in index order: the source file may have
+    # rows out of sequence, but both the downloadable spreadsheet and the
+    # generated import script must run 1, 2, 3, ...
+    if "index" in df.columns:
+        sort_key = pd.to_numeric(df["index"], errors="coerce")
+        if sort_key.isna().any():  # non-numeric index - fall back to string sort
+            sort_key = df["index"].astype(str)
+        df = (
+            df.assign(_sort_key=sort_key)
+            .sort_values("_sort_key", kind="stable")
+            .drop(columns="_sort_key")
+            .reset_index(drop=True)
+        )
     return df
 
 

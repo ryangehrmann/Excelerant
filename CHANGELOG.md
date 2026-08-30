@@ -5,6 +5,11 @@ through git history in this folder — no more copy-pasting a new `v 0.X`
 folder per version. Older pre-git snapshots live in `../archive/`.
 
 ## v0.5 (current)
+- 2026-08-30 — Sort standard word list tools by `index` before use: the BEWL
+  `wordlist.xlsx` had a few rows out of sequence, so both the downloadable
+  spreadsheet and the generated SpeechRecorder / Prompts scripts came out
+  unordered. The bundled file is now sorted, and `load_word_list` re-sorts
+  by index as a safety net for every tool.
 - 2026-08-30 — Fix "Copy XML Script to Clipboard": it wrote raw UTF-8 bytes
   (mojibake for non-ASCII scripts like Lao). Now decodes the bytes back
   through UTF-8 in the browser (`TextDecoder` on `atob` output).
