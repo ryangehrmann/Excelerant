@@ -19,7 +19,7 @@ must be unique.
 
 import csv
 import io
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import pandas as pd
 
@@ -36,6 +36,8 @@ class PromptsListResult:
     csv_text: str | None = None
     xlsx_bytes: bytes | None = None
     error: str | None = None
+    # Index values of rows left out because their vernacular text was blank
+    skipped_indices: list[str] = field(default_factory=list)
 
 
 def _clean_cell(value) -> str:
@@ -90,8 +92,11 @@ def generate_prompts_list(
     # Order columns as PROMPTS_COLUMNS, keeping only the ones we populated.
     out = out[[c for c in PROMPTS_COLUMNS if c in out.columns]]
 
-    # Drop rows with no vernacular text - the app skips them anyway.
-    out = out[out["gloss_v"] != ""].reset_index(drop=True)
+    # Drop rows with no vernacular text - the app skips them anyway - and
+    # report their indices so the user can follow up on them.
+    blank_mask = out["gloss_v"] == ""
+    skipped_indices = out.loc[blank_mask, "index"].tolist()
+    out = out[~blank_mask].reset_index(drop=True)
 
     if out.empty:
         return PromptsListResult(
@@ -118,4 +123,5 @@ def generate_prompts_list(
         dataframe=out,
         csv_text=csv_text,
         xlsx_bytes=xlsx_bytes,
+        skipped_indices=skipped_indices,
     )

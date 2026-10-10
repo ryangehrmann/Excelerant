@@ -16,6 +16,12 @@ from .upload_database import (
     validate_database,
 )
 
+from .colon_check import (
+    COLON_CHARACTERS,
+    COLON_RECOMMENDATION,
+    find_colons,
+)
+
 from .create_data_collection_script import (
     ScriptResult,
     generate_script,
@@ -127,6 +133,10 @@ from .script_converter.processors.text_output import build_ipa_only_docx, build_
 from .script_converter.core.conversion import find_unknown_chars
 
 __all__ = [
+    # colon_check
+    "COLON_CHARACTERS",
+    "COLON_RECOMMENDATION",
+    "find_colons",
     # upload_database
     "REQUIRED_COLUMNS",
     "COLLECT_REQUIRED_COLUMNS",

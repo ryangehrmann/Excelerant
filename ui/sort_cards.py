@@ -1,6 +1,6 @@
 """
 ui/sort_cards.py
-Screen for digital, in-app card sorting (Orthography Development).
+Screen for digital, in-app card sorting (Participatory Card Sorting).
 """
 
 import streamlit as st
@@ -156,7 +156,7 @@ def _render_sort_cards_pile(pile_id):
                 label_visibility="collapsed",
             )
         with remove_col:
-            if st.button("✕", key=f"_sc_remove_pile_{pile_id}", use_container_width=True, help="Remove this pile (cards return to the deck)"):
+            if st.button("✕", key=f"_sc_remove_pile_{pile_id}", width="stretch", help="Remove this pile (cards return to the deck)"):
                 _sc_remove_pile(pile_id)
                 st.rerun()
 
@@ -176,7 +176,7 @@ def _render_sort_cards_pile(pile_id):
         if st.button(
             "Add Card",
             key=f"_sc_add_{pile_id}",
-            use_container_width=True,
+            width="stretch",
             type="primary",
             disabled=current_card is None,
         ):
@@ -186,7 +186,7 @@ def _render_sort_cards_pile(pile_id):
         if st.button(
             "View All",
             key=f"_sc_view_{pile_id}",
-            use_container_width=True,
+            width="stretch",
             disabled=not cards,
         ):
             _sc_pile_details_dialog(pile_id)
@@ -206,7 +206,7 @@ def _render_sort_cards_pile(pile_id):
         if st.button(
             "Quick Add",
             key=f"_sc_quickadd_btn_{pile_id}",
-            use_container_width=True,
+            width="stretch",
             disabled=not quick_uid.strip(),
         ):
             not_found = _sc_quick_add(pile_id, quick_uid)
@@ -232,7 +232,7 @@ def _render_sort_cards_active():
         remaining = len(deck) + (1 if current_card is not None else 0)
         st.markdown(f"**Cards remaining:** {remaining}")
     with top_col2:
-        if st.button("Back to Main Menu", use_container_width=True, key="_sc_active_back"):
+        if st.button("Back to Main Menu", width="stretch", key="_sc_active_back"):
             _clear_sort_cards_state()
             go_back_to_menu()
 
@@ -245,16 +245,16 @@ def _render_sort_cards_active():
 
         control_col1, control_col2 = st.columns(2)
         with control_col1:
-            if st.button("Skip Card", use_container_width=True):
+            if st.button("Skip Card", width="stretch"):
                 _sc_advance_card(skip=True)
                 st.rerun()
         with control_col2:
-            if st.button("+ Add Pile", use_container_width=True, key="_sc_add_pile_active"):
+            if st.button("+ Add Pile", width="stretch", key="_sc_add_pile_active"):
                 _sc_add_pile()
                 st.rerun()
     else:
         st.success("Sorting complete! Every card has been assigned to a pile.")
-        if st.button("+ Add Pile", use_container_width=True, key="_sc_add_pile_done"):
+        if st.button("+ Add Pile", width="stretch", key="_sc_add_pile_done"):
             _sc_add_pile()
             st.rerun()
         st.info("Saving and exporting results is coming in the next stage.")
@@ -296,7 +296,7 @@ def _render_sort_cards_setup(df, columns):
         with method_col1:
             if st.session_state._sc_entry_method == "new":
                 _method_pill("New Sort")
-            elif st.button("New Sort", use_container_width=True):
+            elif st.button("New Sort", width="stretch"):
                 st.session_state._sc_entry_method = "new"
                 st.rerun()
         with method_col2:
@@ -305,7 +305,7 @@ def _render_sort_cards_setup(df, columns):
             else:
                 st.button(
                     "Load Prepared Activity",
-                    use_container_width=True,
+                    width="stretch",
                     disabled=True,
                     help="Coming soon",
                 )
@@ -327,7 +327,7 @@ def _render_sort_cards_setup(df, columns):
             begin_clicked = st.button(
                 "Begin Sort",
                 type="primary",
-                use_container_width=True,
+                width="stretch",
                 disabled=not can_begin,
             )
 
@@ -378,7 +378,7 @@ def _render_sort_cards_setup(df, columns):
 
         st.markdown("")
 
-        if st.button("Back to Main Menu", use_container_width=True, key="_sc_setup_back"):
+        if st.button("Back to Main Menu", width="stretch", key="_sc_setup_back"):
             _clear_sort_cards_state()
             go_back_to_menu()
 
@@ -412,7 +412,7 @@ def _render_sort_cards_setup(df, columns):
 
 
 def screen_sort_cards():
-    """Screen for digital, in-app card sorting (Orthography Development)."""
+    """Screen for digital, in-app card sorting (Participatory Card Sorting)."""
     st.title("Sort Cards")
     st.markdown("---")
 

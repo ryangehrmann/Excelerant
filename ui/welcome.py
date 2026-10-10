@@ -18,7 +18,7 @@ def screen_welcome():
     with col2:
         st.markdown("---")
         st.markdown("")
-        st.image("assets/excelerant_banner.png", use_container_width=True)
+        st.image("assets/excelerant_banner.png", width="stretch")
         st.markdown("---")
 
         st.markdown(
@@ -51,33 +51,29 @@ def screen_welcome():
         btn_collect, btn_manage, btn_phon, btn_ortho, btn_acoustic = st.columns(5)
 
         with btn_collect:
-            if st.button("Collect  \nData", use_container_width=True, type="primary"):
+            if st.button("Collect  \nData", width="stretch", type="primary"):
                 st.session_state.analysis_mode = "collect"
                 navigate_to(Screen.COLLECT_LEXICAL_DATA_HUB)
 
         with btn_manage:
-            if st.button("Manage  \nDatabase", use_container_width=True, type="primary"):
+            if st.button("Manage  \nDatabase", width="stretch", type="primary"):
                 st.session_state.analysis_mode = "manage"
-                navigate_to(Screen.UPLOAD_DATABASE)
+                navigate_to(Screen.MANAGE_DATABASE_HUB)
 
         with btn_phon:
-            st.button(
-                "Analyze  \nPhonology",
-                use_container_width=True,
-                type="primary",
-                disabled=True,
-                help="Phonology analysis tools coming soon",
-            )
+            if st.button("Analyze  \nPhonology", width="stretch", type="primary"):
+                st.session_state.analysis_mode = "phonological"
+                navigate_to(Screen.PHONOLOGY_HUB)
 
         with btn_ortho:
-            if st.button("Develop  \nOrthography", use_container_width=True, type="primary"):
+            if st.button("Develop  \nOrthography", width="stretch", type="primary"):
                 st.session_state.analysis_mode = "orthography"
                 navigate_to(Screen.ORTHOGRAPHY_HUB)
 
         with btn_acoustic:
             st.button(
                 "Analyze  \nPhonetics",
-                use_container_width=True,
+                width="stretch",
                 type="primary",
                 disabled=True,
                 help="Coming soon",
@@ -85,10 +81,10 @@ def screen_welcome():
 
         st.markdown("")
 
-        if st.button("About", use_container_width=True):
+        if st.button("About", width="stretch"):
             navigate_to(Screen.ABOUT)
 
         st.markdown("")
 
-        if st.button("Tutorial", use_container_width=True):
+        if st.button("Tutorial", width="stretch"):
             navigate_to(Screen.TUTORIAL)

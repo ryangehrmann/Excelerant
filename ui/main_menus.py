@@ -2,8 +2,9 @@
 ui/main_menus.py
 Menu/fork screens: the shared per-mode task menu (_render_mode_menu and its
 thin per-mode wrappers), the Collect Data forks (standard-vs-custom, then
-recording platform), the Orthography hub fork, the Acoustic placeholder, and
-the not-yet-implemented task placeholder.
+recording platform), the Manage Database landing page, the Phonology and
+Orthography hub forks, the Acoustic
+placeholder, and the not-yet-implemented task placeholder.
 """
 
 import streamlit as st
@@ -14,14 +15,54 @@ from ui.tasks_registry import TASKS, ENABLED_TASKS, MENU_CATEGORIES
 from ui.shared import _render_main_menu_banner, _render_task_detail
 
 
-def screen_orthography_hub():
-    """Fork between Orthography Development (card-sorting tasks) and Script Conversion."""
+def _start_participatory_card_sorting():
+    """Entry point for Participatory Card Sorting, shared by the Phonology and
+    Orthography hubs: upload a database, then the card-sorting task menu."""
+    st.session_state.analysis_mode = "card_sorting"
+    navigate_to(Screen.UPLOAD_DATABASE)
+
+
+def screen_phonology_hub():
+    """Analyze Phonology landing: currently just Participatory Card Sorting."""
 
     col1, col2, col3 = st.columns([1, 2, 1])
 
     with col2:
         st.markdown("---")
-        st.image("assets/excelerant_banner.png", use_container_width=True)
+        st.image("assets/excelerant_banner.png", width="stretch")
+        st.markdown("---")
+
+        st.markdown(
+            """
+            ### Phonology
+
+            What kind of phonology work are you doing?
+            """
+        )
+
+        st.markdown("")
+
+        if st.button(
+            "Participatory Card Sorting",
+            width="stretch",
+            type="primary",
+        ):
+            _start_participatory_card_sorting()
+
+        st.markdown("")
+
+        if st.button("Back to Welcome", width="stretch"):
+            navigate_to(Screen.WELCOME)
+
+
+def screen_orthography_hub():
+    """Fork between Participatory Card Sorting and Script Conversion."""
+
+    col1, col2, col3 = st.columns([1, 2, 1])
+
+    with col2:
+        st.markdown("---")
+        st.image("assets/excelerant_banner.png", width="stretch")
         st.markdown("---")
 
         st.markdown(
@@ -35,24 +76,24 @@ def screen_orthography_hub():
         st.markdown("")
 
         if st.button(
-            "Orthography Development",
-            use_container_width=True,
+            "Participatory Card Sorting",
+            width="stretch",
             type="primary",
         ):
-            navigate_to(Screen.UPLOAD_DATABASE)
+            _start_participatory_card_sorting()
 
         st.markdown("")
 
         if st.button(
             "Script Conversion",
-            use_container_width=True,
+            width="stretch",
             type="primary",
         ):
             navigate_to(Screen.SCRIPT_CONVERTER)
 
         st.markdown("")
 
-        if st.button("Back to Welcome", use_container_width=True):
+        if st.button("Back to Welcome", width="stretch"):
             navigate_to(Screen.WELCOME)
 
 
@@ -64,7 +105,7 @@ def screen_collect_lexical_data_hub():
 
     with col2:
         st.markdown("---")
-        st.image("assets/excelerant_banner.png", use_container_width=True)
+        st.image("assets/excelerant_banner.png", width="stretch")
         st.markdown("---")
 
         st.markdown(
@@ -87,7 +128,7 @@ def screen_collect_lexical_data_hub():
             "language - currently the **Big Excelerant Word List (BEWL)**: "
             "1,886 items for Mainland Southeast Asia, English and Lao."
         )
-        if st.button("Use a standard word list", use_container_width=True, type="primary"):
+        if st.button("Use a standard word list", width="stretch", type="primary"):
             st.session_state.collect_source = "standard"
             st.session_state.selected_word_list_tool = None
             st.session_state.collection_target = None
@@ -100,13 +141,91 @@ def screen_collect_lexical_data_hub():
             "Upload your own spreadsheet - an `index` column and at least one "
             "column of glosses to prompt with."
         )
-        if st.button("Upload my own word list", use_container_width=True, type="primary"):
+        if st.button("Upload my own word list", width="stretch", type="primary"):
             st.session_state.collect_source = "custom"
             navigate_to(Screen.UPLOAD_DATABASE)
 
         st.markdown("")
 
-        if st.button("Back to Welcome", use_container_width=True):
+        if st.button("Back to Welcome", width="stretch"):
+            navigate_to(Screen.WELCOME)
+
+
+def screen_manage_database_hub():
+    """Manage Database landing: explains what the section is for (keeping an
+    existing Excelerant database in step with the analysis), then uploads."""
+
+    col1, col2, col3 = st.columns([1, 2, 1])
+
+    with col2:
+        st.markdown("---")
+        st.image("assets/excelerant_banner.png", width="stretch")
+        st.markdown("---")
+
+        st.markdown(
+            """
+            ### Manage Database
+
+            Use this section once you have an Excelerant lexical database. It
+            keeps the database in step with your analysis as your
+            transcriptions develop.
+            """
+        )
+
+        st.markdown("")
+
+        st.markdown("#### Update entries from revised transcriptions")
+        st.markdown(
+            """
+            In an Excelerant database, each entry is split into words (one
+            row per word, numbered by `sub_index`), and each word is split
+            into segment columns: `P` `R` `C` `M` `V` `F` `T`. In the
+            spreadsheet Excelerant exports, the `word` column is a formula
+            built from those segments, so when you revise a segment (say,
+            after deciding an onset is phonemically /ʔb/ rather than [b]),
+            the word updates automatically.
+
+            The `entry` column doesn't. **Check Database Formatting & Update
+            Entries** rebuilds every entry from its current words, so entries
+            reflect your latest phonemic transcription. Whenever an entry
+            changes, the previous entries are saved in a dated column (for
+            example `entry_before_2026-10-10`), so the database keeps a record
+            of each revision.
+
+            A typical cycle:
+            1. Download your database from Excelerant.
+            2. Revise segments or words in Excel as your analysis progresses.
+            3. Upload the spreadsheet here and run **Check Database
+               Formatting & Update Entries**.
+            4. Download the updated database.
+            """
+        )
+
+        st.markdown("")
+
+        st.markdown("#### Setting up and extending the database")
+        st.markdown(
+            """
+            - **Explode Entries** splits multi-word entries into one word per
+              row, adding the `word` and `sub_index` columns.
+            - **Segment Words** breaks each word into the `P`-`T` segment
+              columns.
+            - **Add Audio File Links to Database** matches your recordings
+              to entries by index and adds clickable links to them.
+
+            Rows that aren't transcribed yet can stay blank; they're carried
+            through every step and filled in later.
+            """
+        )
+
+        st.markdown("")
+
+        if st.button("Upload my database", width="stretch", type="primary"):
+            navigate_to(Screen.UPLOAD_DATABASE)
+
+        st.markdown("")
+
+        if st.button("Back to Welcome", width="stretch"):
             navigate_to(Screen.WELCOME)
 
 
@@ -120,7 +239,7 @@ def screen_collect_platform():
 
     with col2:
         st.markdown("---")
-        st.image("assets/excelerant_banner.png", use_container_width=True)
+        st.image("assets/excelerant_banner.png", width="stretch")
         st.markdown("---")
 
         st.markdown(
@@ -143,7 +262,7 @@ def screen_collect_platform():
             "[Download SpeechRecorder]"
             "(https://www.bas.uni-muenchen.de/Bas/software/speechrecorder/)"
         )
-        if st.button("SpeechRecorder", use_container_width=True, type="primary"):
+        if st.button("SpeechRecorder", width="stretch", type="primary"):
             _choose_platform("speechrecorder", source)
 
         st.markdown("")
@@ -158,17 +277,17 @@ def screen_collect_platform():
             "(https://github.com/ryangehrmann/Prompts/releases/latest/download/Prompts.apk)"
             " · [source](https://github.com/ryangehrmann/Prompts)"
         )
-        if st.button("Prompts", use_container_width=True, type="primary"):
+        if st.button("Prompts", width="stretch", type="primary"):
             _choose_platform("prompts", source)
 
         st.markdown("")
 
         if source == "standard":
-            if st.button("← Back to word lists", use_container_width=True):
+            if st.button("← Back to word lists", width="stretch"):
                 st.session_state.selected_word_list_tool = None
                 navigate_to(Screen.STANDARD_WORD_LISTS)
         else:
-            if st.button("← Back to upload", use_container_width=True):
+            if st.button("← Back to upload", width="stretch"):
                 navigate_to(Screen.UPLOAD_DATABASE)
 
 
@@ -194,7 +313,7 @@ def _render_mode_menu(mode: str):
     selected task's detail, or the database preview.
 
     For "collect" mode the task list is narrowed further to the single builder
-    for the platform picked on the Collect Lexical Data screen.
+    for the platform picked on the Collect Data screen.
     """
 
     # Add vertical divider CSS just for this screen
@@ -242,7 +361,7 @@ def _render_mode_menu(mode: str):
             if st.button(
                 task.name,
                 key=f"btn_{task.id}",
-                use_container_width=True,
+                width="stretch",
                 type=button_type,
             ):
                 st.session_state.selected_task = task.id
@@ -257,13 +376,13 @@ def _render_mode_menu(mode: str):
             data=export_database(st.session_state.database),
             file_name="database.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True,
+            width="stretch",
         )
 
-        if st.button("Replace Database", use_container_width=True):
+        if st.button("Replace Database", width="stretch"):
             navigate_to(Screen.UPLOAD_DATABASE)
 
-        if st.button("Clear Database & Start Over", use_container_width=True):
+        if st.button("Clear Database & Start Over", width="stretch"):
             st.session_state.database = None
             st.session_state.database_validated = False
             st.session_state.database_filename = None
@@ -284,13 +403,14 @@ def screen_main_menu_phonological():
     _render_mode_menu("phonological")
 
 
-def screen_main_menu_orthography():
-    """Main menu for Develop Orthography."""
-    _render_mode_menu("orthography")
+def screen_main_menu_card_sorting():
+    """Main menu for Participatory Card Sorting (reached from the Phonology
+    and Orthography hubs)."""
+    _render_mode_menu("card_sorting")
 
 
 def screen_main_menu_collect():
-    """Main menu for Collect Lexical Data (task list narrowed to the chosen platform)."""
+    """Main menu for Collect Data (task list narrowed to the chosen platform)."""
     _render_mode_menu("collect")
 
 

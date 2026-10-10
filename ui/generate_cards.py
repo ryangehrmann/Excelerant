@@ -1,6 +1,6 @@
 """
 ui/generate_cards.py
-Screen for exporting a printable card-sorting activity (Orthography Development).
+Screen for exporting a printable card-sorting activity (Participatory Card Sorting).
 """
 
 import pandas as pd
@@ -56,7 +56,7 @@ def _render_filter_and_card_content_config(df, columns, key_prefix: str, filter_
 
     if st.button(
         "Clear Filters",
-        use_container_width=True,
+        width="stretch",
         disabled=not filter_columns,
         key=f"_{key_prefix}_clear_filters",
     ):
@@ -118,7 +118,7 @@ def _render_filter_and_card_content_config(df, columns, key_prefix: str, filter_
 
 
 def screen_generate_cards():
-    """Screen for exporting a printable card-sorting activity (Orthography Development)."""
+    """Screen for exporting a printable card-sorting activity (Participatory Card Sorting)."""
 
     # Add vertical divider CSS
     st.markdown(
@@ -166,7 +166,7 @@ def screen_generate_cards():
         generate_clicked = st.button(
             "Generate Cards",
             type="primary",
-            use_container_width=True,
+            width="stretch",
             disabled=not can_generate,
         )
 
@@ -190,7 +190,7 @@ def screen_generate_cards():
 
         st.markdown("")
 
-        if st.button("Back to Main Menu", use_container_width=True):
+        if st.button("Back to Main Menu", width="stretch"):
             for key in ["_generate_cards_generate_params", "_generate_cards_export_result"]:
                 if key in st.session_state:
                     del st.session_state[key]
@@ -265,7 +265,7 @@ def screen_generate_cards():
                         file_name=html_name,
                         mime="text/html",
                         type="primary",
-                        use_container_width=True,
+                        width="stretch",
                         help="Printable HTML card deck for physical sorting.",
                     )
 
@@ -276,11 +276,11 @@ def screen_generate_cards():
                         file_name=json_name,
                         mime="application/json",
                         type="primary",
-                        use_container_width=True,
+                        width="stretch",
                         help="Prepared activity file for digital/asynchronous sorting in Sort Cards.",
                     )
 
-                if st.button("Return to Main Menu", use_container_width=True, key="return_after_sorting"):
+                if st.button("Return to Main Menu", width="stretch", key="return_after_sorting"):
                     del st.session_state._generate_cards_export_result
                     go_back_to_menu()
 
@@ -301,7 +301,7 @@ def screen_generate_cards():
 
                 st.markdown("---")
 
-                if st.button("Back to Configuration", use_container_width=True):
+                if st.button("Back to Configuration", width="stretch"):
                     del st.session_state._generate_cards_export_result
                     st.rerun()
 
@@ -313,7 +313,7 @@ def screen_generate_cards():
             st.markdown(f"**{len(filtered_df):,}** of **{len(df):,}** rows match your current filters.")
             if sort_by_col:
                 st.caption(f"Sorted by '{sort_by_col}'.")
-            st.dataframe(preview_df.head(15), use_container_width=True)
+            st.dataframe(preview_df.head(15), width="stretch")
 
             st.markdown("---")
 
@@ -342,4 +342,4 @@ def screen_generate_cards():
                 "gloss_eng": ["happiness"],
                 "phonetic": ["/suk/"],
             })
-            st.dataframe(example_card, use_container_width=True, hide_index=True)
+            st.dataframe(example_card, width="stretch", hide_index=True)

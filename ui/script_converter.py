@@ -250,7 +250,7 @@ def _screen_script_converter_xlsx(run_pipeline, flat_dict, segments_dict, script
 
         if not unknown_df.empty:
             st.warning(f"{len(unknown_df)} character(s) not found in the conversion table:")
-            st.dataframe(unknown_df, use_container_width=False)
+            st.dataframe(unknown_df, width="content")
 
         if ambig_rate > 0.30:
             st.warning(

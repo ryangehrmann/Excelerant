@@ -98,13 +98,13 @@ def screen_create_prompts_list():
         generate_clicked = st.button(
             "Generate Prompts List",
             type="primary",
-            use_container_width=True,
+            width="stretch",
         )
 
         st.markdown("")
 
-        if st.button("Back to Main Menu", use_container_width=True):
-            for key in ("_prompts_list_csv", "_prompts_list_xlsx", "_prompts_list_preview"):
+        if st.button("Back to Main Menu", width="stretch"):
+            for key in ("_prompts_list_csv", "_prompts_list_xlsx", "_prompts_list_preview", "_prompts_list_skipped"):
                 st.session_state.pop(key, None)
             go_back_to_menu()
 
@@ -130,12 +130,21 @@ def screen_create_prompts_list():
                 st.session_state._prompts_list_csv = result.csv_text
                 st.session_state._prompts_list_xlsx = result.xlsx_bytes
                 st.session_state._prompts_list_preview = result.dataframe
+                st.session_state._prompts_list_skipped = (vernacular_col, result.skipped_indices)
                 st.session_state._scroll_to_top = True
                 st.rerun()
 
         if st.session_state.get("_prompts_list_csv"):
             preview = st.session_state._prompts_list_preview
             st.success(f"Prompt list generated - {len(preview):,} prompts.")
+
+            skipped_col, skipped = st.session_state.get("_prompts_list_skipped") or (None, [])
+            if skipped:
+                st.warning(
+                    f"**{len(skipped):,} rows were left out** because their `{skipped_col}` cell is blank."
+                )
+                st.caption("Index values of the rows left out (use the copy button):")
+                st.code(", ".join(skipped), language=None, wrap_lines=True)
 
             dl_col1, dl_col2 = st.columns(2)
             with dl_col1:
@@ -145,7 +154,7 @@ def screen_create_prompts_list():
                     file_name="prompts.csv",
                     mime="text/csv",
                     type="primary",
-                    use_container_width=True,
+                    width="stretch",
                 )
             with dl_col2:
                 st.download_button(
@@ -153,13 +162,13 @@ def screen_create_prompts_list():
                     data=st.session_state._prompts_list_xlsx,
                     file_name="prompts.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    use_container_width=True,
+                    width="stretch",
                 )
 
             st.markdown("---")
 
             st.markdown("**Preview**")
-            st.dataframe(preview, use_container_width=True, height=320)
+            st.dataframe(preview, width="stretch", height=320)
 
             st.markdown("---")
 

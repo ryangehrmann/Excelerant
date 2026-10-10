@@ -17,12 +17,14 @@ from ui.welcome import screen_welcome
 from ui.info_pages import screen_about, screen_tutorial
 from ui.upload_database import screen_upload_database
 from ui.main_menus import (
+    screen_phonology_hub,
     screen_orthography_hub,
     screen_collect_lexical_data_hub,
+    screen_manage_database_hub,
     screen_collect_platform,
     screen_main_menu_manage,
     screen_main_menu_phonological,
-    screen_main_menu_orthography,
+    screen_main_menu_card_sorting,
     screen_main_menu_acoustic,
     screen_main_menu_collect,
     screen_task_placeholder,
@@ -44,12 +46,14 @@ SCREEN_FUNCTIONS: dict[str, Callable] = {
     Screen.UPLOAD_DATABASE: screen_upload_database,
     Screen.MAIN_MENU: screen_main_menu_phonological,  # legacy fallback
     Screen.MAIN_MENU_PHONOLOGICAL: screen_main_menu_phonological,
-    Screen.MAIN_MENU_ORTHOGRAPHY: screen_main_menu_orthography,
+    Screen.MAIN_MENU_CARD_SORTING: screen_main_menu_card_sorting,
     Screen.MAIN_MENU_ACOUSTIC: screen_main_menu_acoustic,
     Screen.MAIN_MENU_COLLECT: screen_main_menu_collect,
     Screen.MAIN_MENU_MANAGE: screen_main_menu_manage,
+    Screen.PHONOLOGY_HUB: screen_phonology_hub,
     Screen.ORTHOGRAPHY_HUB: screen_orthography_hub,
     Screen.COLLECT_LEXICAL_DATA_HUB: screen_collect_lexical_data_hub,
+    Screen.MANAGE_DATABASE_HUB: screen_manage_database_hub,
     Screen.COLLECT_PLATFORM: screen_collect_platform,
     Screen.STANDARD_WORD_LISTS: screen_standard_word_lists,
     Screen.SCRIPT_CONVERTER: screen_script_converter,

@@ -59,7 +59,7 @@ def _render_tool_catalog():
 
     with col2:
         st.markdown("---")
-        st.image("assets/excelerant_banner.png", use_container_width=True)
+        st.image("assets/excelerant_banner.png", width="stretch")
         st.markdown("---")
 
         st.markdown(
@@ -79,7 +79,7 @@ def _render_tool_catalog():
             st.info("No standard word list tools are installed yet.")
         else:
             for tool in tools:
-                if st.button(tool.name, key=f"swl_{tool.id}", use_container_width=True, type="primary"):
+                if st.button(tool.name, key=f"swl_{tool.id}", width="stretch", type="primary"):
                     st.session_state.selected_word_list_tool = tool.id
                     _clear_tool_output()
                     navigate_to(Screen.COLLECT_PLATFORM)
@@ -89,7 +89,7 @@ def _render_tool_catalog():
 
         st.markdown("---")
 
-        if st.button("← Back", use_container_width=True):
+        if st.button("← Back", width="stretch"):
             navigate_to(Screen.COLLECT_LEXICAL_DATA_HUB)
 
 
@@ -104,12 +104,12 @@ def _render_tool_detail(tool):
 
         nav1, nav2 = st.columns(2)
         with nav1:
-            if st.button("← All word lists", use_container_width=True):
+            if st.button("← All word lists", width="stretch"):
                 st.session_state.selected_word_list_tool = None
                 _clear_tool_output()
                 navigate_to(Screen.STANDARD_WORD_LISTS)
         with nav2:
-            if st.button("Change platform", use_container_width=True):
+            if st.button("Change platform", width="stretch"):
                 navigate_to(Screen.COLLECT_PLATFORM)
 
         st.title(tool.name)
@@ -210,7 +210,7 @@ def _render_tool_detail(tool):
             data=read_wordlist_bytes(tool),
             file_name=tool.wordlist_download_name,
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True,
+            width="stretch",
             key=f"swl_dl_wl_{tool.id}",
         )
 
@@ -220,7 +220,7 @@ def _render_tool_detail(tool):
                 data=documentation_html(tool).encode("utf-8"),
                 file_name=f"{tool.id}_documentation.html",
                 mime="text/html",
-                use_container_width=True,
+                width="stretch",
                 key=f"swl_dl_doc_{tool.id}",
             )
 
@@ -234,7 +234,7 @@ def _render_sr_generate(tool, primary_col, secondary_col, num_tokens, sentence_f
     if st.button(
         "Generate SpeechRecorder script",
         type="primary",
-        use_container_width=True,
+        width="stretch",
         key=f"swl_gen_sr_{tool.id}",
     ):
         with st.spinner("Generating XML script..."):
@@ -267,7 +267,7 @@ def _render_prompts_generate(tool, primary_col, secondary_col):
     if st.button(
         "Generate Prompts list",
         type="primary",
-        use_container_width=True,
+        width="stretch",
         key=f"swl_gen_pr_{tool.id}",
     ):
         with st.spinner("Building prompt list..."):
@@ -303,7 +303,7 @@ def _render_prompts_generate(tool, primary_col, secondary_col):
                 file_name=f"{tool.id}_prompts.csv",
                 mime="text/csv",
                 type="primary",
-                use_container_width=True,
+                width="stretch",
                 key=f"swl_dl_pr_csv_{tool.id}",
             )
         with dl2:
@@ -312,7 +312,7 @@ def _render_prompts_generate(tool, primary_col, secondary_col):
                 data=result.xlsx_bytes,
                 file_name=f"{tool.id}_prompts.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True,
+                width="stretch",
                 key=f"swl_dl_pr_xlsx_{tool.id}",
             )
-        st.dataframe(result.dataframe, use_container_width=True, height=240)
+        st.dataframe(result.dataframe, width="stretch", height=240)

@@ -5,7 +5,7 @@ Helpers shared across the main-menu screens.
 
 import streamlit as st
 
-from tasks import reorder_columns
+from tasks import COLON_RECOMMENDATION, reorder_columns
 from ui.navigation import Screen, navigate_to
 from ui.tasks_registry import TASKS
 
@@ -42,7 +42,7 @@ def _render_task_detail(right_col):
                     st.text(f"• {col}")
 
             with st.expander("Data Preview", expanded=True):
-                st.dataframe(df.head(10), use_container_width=True, height=300)
+                st.dataframe(df.head(10), width="stretch", height=300)
 
         else:
             # Show selected task info
@@ -52,12 +52,12 @@ def _render_task_detail(right_col):
             col1, col2 = st.columns([1, 1])
 
             with col1:
-                if st.button("Back to Preview", use_container_width=True):
+                if st.button("Back to Preview", width="stretch"):
                     st.session_state.selected_task = None
                     st.rerun()
 
             with col2:
-                if st.button("Begin", type="primary", use_container_width=True):
+                if st.button("Begin", type="primary", width="stretch"):
                     # Navigate to task screen based on selected task
                     task_screens = {
                         "create_data_collection_script": Screen.TASK_CREATE_DATA_COLLECTION_SCRIPT,
@@ -98,3 +98,16 @@ def _render_task_detail(right_col):
                 st.markdown(f"[Watch Tutorial]({task.youtube_url})")
             else:
                 st.markdown("*Tutorial video coming soon*")
+
+
+def render_colon_locations(locations: dict[str, list[str]]):
+    """Show where colons were found, one copyable list of row IDs per column,
+    plus the Find & Replace reminder."""
+    for col, row_ids in locations.items():
+        st.markdown(f"**`{col}` column** - {len(row_ids):,} row(s):")
+        st.code(", ".join(row_ids), language=None, wrap_lines=True)
+    st.caption(
+        "Row IDs are index values for `entry`, and index.sub_index for words and "
+        "segments (the same IDs printed on cards)."
+    )
+    st.info(COLON_RECOMMENDATION)

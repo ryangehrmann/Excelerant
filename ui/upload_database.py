@@ -15,10 +15,51 @@ from tasks import (
 from ui.navigation import Screen, navigate_to, proceed_after_upload
 
 
+# What a blank cell means, per column, for the upload warning
+BLANK_DESCRIPTIONS = {
+    "entry": "have no entry (untranscribed)",
+    "gloss": "have no gloss",
+}
+
+
+def show_validation_result(validation):
+    """Show validation errors (blocking) and blank-cell warnings (non-blocking)."""
+    if not validation.valid:
+        st.error("**Validation errors found.**")
+
+        for col_name, issues in validation.errors.items():
+            with st.expander(f"Issues in '{col_name}' column ({len(issues)} errors)", expanded=True):
+                if col_name == "index":
+                    st.markdown("All values in the `index` column must be integers.")
+                else:
+                    st.markdown(f"Values in the `{col_name}` column must be text.")
+
+                st.markdown("**Problematic rows:**")
+                for issue in issues[:20]:  # Show max 20
+                    st.text(f"  {issue}")
+                if len(issues) > 20:
+                    st.text(f"  ... and {len(issues) - 20} more")
+
+        st.markdown("---")
+        st.info("Please fix these issues in your Excel file, then upload the corrected file above.")
+        return
+
+    st.success("Data validation passed")
+
+    for col_name, indices in validation.blank_indices.items():
+        description = BLANK_DESCRIPTIONS.get(col_name, f"have a blank '{col_name}' cell")
+        st.warning(
+            f"**{len(indices):,} rows {description}.** They'll be kept in the database "
+            "and skipped by steps that need them."
+        )
+        st.caption(f"Index values of rows with a blank `{col_name}` (use the copy button):")
+        st.code(", ".join(indices), language=None, wrap_lines=True)
+
+
 def screen_upload_database():
     """Database upload and validation screen."""
 
-    # The Collect Lexical Data flow runs before transcription, so it only needs
+    # The Collect Data flow runs before transcription, so it only needs
     # index + gloss; every other mode needs the full index/entry/gloss database.
     required_columns = (
         COLLECT_REQUIRED_COLUMNS
@@ -49,7 +90,7 @@ def screen_upload_database():
         st.subheader("Upload")
 
         if st.session_state.get("analysis_mode") in ("phonological", "collect", "manage"):
-            if st.button("Load an Example Database", use_container_width=True):
+            if st.button("Load an Example Database", width="stretch"):
                 example_path = "example_data/example_data.xlsx"
                 valid_sheets = find_valid_sheets(example_path, required_columns)
 
@@ -114,31 +155,12 @@ def screen_upload_database():
 
                     # Validate the data
                     validation = validate_database(df, required_columns)
+                    show_validation_result(validation)
 
-                    if not validation.valid:
-                        st.error("**Validation errors found.**")
-
-                        for col_name, issues in validation.errors.items():
-                            with st.expander(f"Issues in '{col_name}' column ({len(issues)} errors)", expanded=True):
-                                if col_name == "index":
-                                    st.markdown("All values in the `index` column must be integers.")
-                                else:
-                                    st.markdown(f"All values in the `{col_name}` column must be non-empty strings.")
-
-                                st.markdown("**Problematic rows:**")
-                                for issue in issues[:20]:  # Show max 20
-                                    st.text(f"  {issue}")
-                                if len(issues) > 20:
-                                    st.text(f"  ... and {len(issues) - 20} more")
-
-                        st.markdown("---")
-                        st.info("Please fix these issues in your Excel file, then upload the corrected file above.")
-                    else:
-                        st.success("Data validation passed")
-
+                    if validation.valid:
                         st.markdown("---")
 
-                        if st.button("Load Database", type="primary", use_container_width=True):
+                        if st.button("Load Database", type="primary", width="stretch"):
                             st.session_state.database = df
                             st.session_state.database_validated = True
                             st.session_state.database_filename = uploaded_file.name
@@ -182,31 +204,12 @@ def screen_upload_database():
 
                         # Validate the data
                         validation = validate_database(df, required_columns)
+                        show_validation_result(validation)
 
-                        if not validation.valid:
-                            st.error("**Validation errors found.**")
-
-                            for col_name, issues in validation.errors.items():
-                                with st.expander(f"Issues in '{col_name}' column ({len(issues)} errors)", expanded=True):
-                                    if col_name == "index":
-                                        st.markdown("All values in the `index` column must be integers.")
-                                    else:
-                                        st.markdown(f"All values in the `{col_name}` column must be non-empty strings.")
-
-                                    st.markdown("**Problematic rows:**")
-                                    for issue in issues[:20]:  # Show max 20
-                                        st.text(f"  {issue}")
-                                    if len(issues) > 20:
-                                        st.text(f"  ... and {len(issues) - 20} more")
-
-                            st.markdown("---")
-                            st.info("Please fix these issues in your Excel file, then upload the corrected file above.")
-                        else:
-                            st.success("Data validation passed")
-
+                        if validation.valid:
                             st.markdown("---")
 
-                            if st.button("Load Database", type="primary", use_container_width=True):
+                            if st.button("Load Database", type="primary", width="stretch"):
                                 st.session_state.database = df
                                 st.session_state.database_validated = True
                                 st.session_state.database_filename = uploaded_file.name
@@ -263,4 +266,4 @@ def screen_upload_database():
                     st.text(f"{marker} {col}")
 
             with st.expander("Data Preview", expanded=True):
-                st.dataframe(df.head(10), use_container_width=True, height=300)
+                st.dataframe(df.head(10), width="stretch", height=300)

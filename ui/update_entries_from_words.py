@@ -3,10 +3,13 @@ ui/update_entries_from_words.py
 Screen for checking database formatting and updating entries from words.
 """
 
+import datetime
+
 import pandas as pd
 import streamlit as st
 
 from tasks import FORMATTING_REQUIRED_COLUMNS, detect_columns, check_database_formatting, export_database
+from ui.shared import render_colon_locations
 from ui.navigation import Screen, navigate_to, go_back_to_menu
 
 
@@ -82,7 +85,7 @@ def screen_update_entries_from_words():
             process_clicked = st.button(
                 "Check Formatting & Update Entries",
                 type="primary",
-                use_container_width=True,
+                width="stretch",
             )
 
             if process_clicked:
@@ -149,7 +152,7 @@ def screen_update_entries_from_words():
             process_clicked = st.button(
                 "Check Formatting & Update Entries",
                 type="primary",
-                use_container_width=True,
+                width="stretch",
                 disabled=not all_mapped,
             )
 
@@ -165,7 +168,7 @@ def screen_update_entries_from_words():
 
         st.markdown("---")
 
-        if st.button("Back to Main Menu", use_container_width=True):
+        if st.button("Back to Main Menu", width="stretch"):
             # Clean up session state
             for key in ["_formatting_check_params", "_formatting_check_result"]:
                 if key in st.session_state:
@@ -215,11 +218,31 @@ def screen_update_entries_from_words():
                 - Total rows: {result.summary.get('total_rows', 'N/A')}
                 - Unique indices: {result.summary.get('unique_indices', 'N/A')}
                 - Auto-fixes applied: {result.summary.get('auto_fixes_count', 0)}
+                - Untranscribed rows kept as-is: {result.summary.get('untranscribed_rows', 0)}
                 """
                 if cat_cols_text:
                     summary_text += f"\n                {cat_cols_text}"
 
                 st.markdown(summary_text)
+
+                archive_column = result.summary.get("archive_column")
+                if archive_column:
+                    st.info(
+                        f"{result.summary.get('entries_changed', 0):,} rows got a new entry. "
+                        f"The previous entries were saved in `{archive_column}`."
+                    )
+                else:
+                    st.info("No entries changed, so nothing was archived.")
+
+                converted = result.summary.get("characters_converted", {})
+                if converted:
+                    with st.expander("Characters converted to Excelerant's form", expanded=False):
+                        st.markdown(
+                            "These look the same as (or stand for) Excelerant's symbols, "
+                            "but were stored differently:"
+                        )
+                        for char, count in converted.items():
+                            st.text(f"  '{char}': {count}")
 
                 # Show auto-fixes if any
                 if result.auto_fixes_applied:
@@ -245,11 +268,11 @@ def screen_update_entries_from_words():
                         file_name="database_formatted.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                         type="primary",
-                        use_container_width=True,
+                        width="stretch",
                     )
 
                 with btn_col2:
-                    if st.button("Return to Main Menu", use_container_width=True, key="return_after_format"):
+                    if st.button("Return to Main Menu", width="stretch", key="return_after_format"):
                         for key in ["_formatting_check_params", "_formatting_check_result"]:
                             if key in st.session_state:
                                 del st.session_state[key]
@@ -258,17 +281,17 @@ def screen_update_entries_from_words():
                 st.markdown("---")
 
                 st.markdown("**Updated Database Preview:**")
-                # Show key columns: index, sub_index, word, entry_orig, entry, gloss
+                # Show key columns: index, sub_index, word, this run's archive, entry, gloss
                 preview_cols = []
-                col_priority = ['index', 'sub_index', 'word', 'entry_orig', 'entry', 'gloss']
+                col_priority = ['index', 'sub_index', 'word', archive_column, 'entry', 'gloss']
                 for col in col_priority:
                     if col in result.df.columns:
                         preview_cols.append(col)
 
                 if preview_cols:
-                    st.dataframe(result.df[preview_cols].head(20), use_container_width=True)
+                    st.dataframe(result.df[preview_cols].head(20), width="stretch")
                 else:
-                    st.dataframe(result.df.head(20), use_container_width=True)
+                    st.dataframe(result.df.head(20), width="stretch")
 
             else:
                 # Show error
@@ -278,18 +301,21 @@ def screen_update_entries_from_words():
 
                 st.markdown("---")
 
-                st.markdown("**Details:**")
-                for detail in error.details:
-                    st.text(f"  {detail}")
+                if error.colon_locations:
+                    render_colon_locations(error.colon_locations)
+                else:
+                    st.markdown("**Details:**")
+                    for detail in error.details:
+                        st.text(f"  {detail}")
+
+                    st.markdown("---")
+
+                    st.markdown("**Recommendation:**")
+                    st.info(error.recommendation)
 
                 st.markdown("---")
 
-                st.markdown("**Recommendation:**")
-                st.info(error.recommendation)
-
-                st.markdown("---")
-
-                if st.button("Clear Database & Start Over", type="primary", use_container_width=True):
+                if st.button("Clear Database & Start Over", type="primary", width="stretch"):
                     # Clean up session state
                     for key in ["_formatting_check_params", "_formatting_check_result"]:
                         if key in st.session_state:
@@ -314,6 +340,7 @@ def screen_update_entries_from_words():
 
                 **Validation checks:**
                 - No blank values in index, sub_index, entry, or word columns
+                  (rows with both entry and word blank are treated as untranscribed and kept as-is)
                 - Index values must be integers
                 - Sub_index values must be integers
                 - Entry and word values must be strings
@@ -330,7 +357,10 @@ def screen_update_entries_from_words():
                 automatically renumbered (e.g., 3, 5, 7 becomes 1, 2, 3).
 
                 **Output:**
-                - Original 'entry' column is preserved as 'entry_orig'
+                - If any entry changes, the previous entries are saved in a new column named
+                  `entry_before_` plus today's date (e.g. `entry_before_2026-10-10`), placed
+                  just before 'entry'. A second run on the same day adds `_2`, and so on.
+                  If nothing changes, no column is added.
                 - New 'entry' column is created by joining words in sub_index order per group
                 """
             )
@@ -342,20 +372,21 @@ def screen_update_entries_from_words():
             example_before = pd.DataFrame({
                 'index': [1, 1, 1, 2, 2],
                 'sub_index': [1, 2, 3, 1, 2],
-                'word': ['the', 'big', 'dog', 'a', 'cat'],
+                'word': ['the', 'big', 'dɔg', 'a', 'cat'],
                 'entry': ['the big dog', 'the big dog', 'the big dog', 'a cat', 'a cat'],
                 'gloss': ['animal', 'animal', 'animal', 'animal', 'animal'],
             })
             st.markdown("**Before:**")
-            st.dataframe(example_before, use_container_width=True, hide_index=True)
+            st.dataframe(example_before, width="stretch", hide_index=True)
 
+            example_archive = f"entry_before_{datetime.date.today().isoformat()}"
             example_after = pd.DataFrame({
                 'index': [1, 1, 1, 2, 2],
                 'sub_index': [1, 2, 3, 1, 2],
-                'word': ['the', 'big', 'dog', 'a', 'cat'],
-                'entry_orig': ['the big dog', 'the big dog', 'the big dog', 'a cat', 'a cat'],
-                'entry': ['the big dog', 'the big dog', 'the big dog', 'a cat', 'a cat'],
+                'word': ['the', 'big', 'dɔg', 'a', 'cat'],
+                example_archive: ['the big dog', 'the big dog', 'the big dog', 'a cat', 'a cat'],
+                'entry': ['the big dɔg', 'the big dɔg', 'the big dɔg', 'a cat', 'a cat'],
                 'gloss': ['animal', 'animal', 'animal', 'animal', 'animal'],
             })
-            st.markdown("**After (entry reconstructed from words):**")
-            st.dataframe(example_after[['index', 'sub_index', 'word', 'entry_orig', 'entry']], use_container_width=True, hide_index=True)
+            st.markdown("**After ('dog' revised to 'dɔg'; entry rebuilt from words, previous entry archived):**")
+            st.dataframe(example_after[['index', 'sub_index', 'word', example_archive, 'entry']], width="stretch", hide_index=True)

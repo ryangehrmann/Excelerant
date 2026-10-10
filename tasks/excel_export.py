@@ -41,13 +41,24 @@ PRIORITY_COLUMNS_BEFORE = [
 # For backwards compatibility
 PRIORITY_COLUMNS = PRIORITY_COLUMNS_BEFORE + ['link', 'path']
 
+# Dated archives of previous entries written by Update Entries
+# ('entry_before_YYYY-MM-DD', optionally with a '_2', '_3', ... suffix)
+ENTRY_ARCHIVE_PREFIX = 'entry_before_'
+
+
+def _entry_archive_sort_key(col: str) -> tuple[str, int]:
+    """Sort entry archive columns oldest first: by date, then run number."""
+    date_part, _, run = col[len(ENTRY_ARCHIVE_PREFIX):].partition('_')
+    return date_part, int(run) if run.isdigit() else 1
+
 
 def reorder_columns(df: pd.DataFrame) -> pd.DataFrame:
     """
     Reorder DataFrame columns with priority columns first.
 
     Column order:
-    1. Priority columns (index, sub_index, speaker, token, etc.)
+    1. Priority columns (index, sub_index, speaker, token, etc.), with any
+       entry_before_* archive columns just before 'entry', oldest first
     2. All link columns grouped together (link, link_*, etc.)
     3. All path columns grouped together (path, path_*, etc.)
     4. Any remaining columns
@@ -62,6 +73,15 @@ def reorder_columns(df: pd.DataFrame) -> pd.DataFrame:
 
     # Get priority columns that exist in the dataframe
     priority_cols = [col for col in PRIORITY_COLUMNS_BEFORE if col in df.columns]
+
+    # Slot entry archive columns in just before 'entry' (newest closest to it)
+    archive_cols = sorted(
+        (col for col in df.columns if isinstance(col, str) and col.startswith(ENTRY_ARCHIVE_PREFIX)),
+        key=_entry_archive_sort_key,
+    )
+    if archive_cols:
+        insert_at = priority_cols.index('entry') if 'entry' in priority_cols else len(priority_cols)
+        priority_cols[insert_at:insert_at] = archive_cols
 
     # Get all link columns (link, link_M1_1, etc.) - sorted for consistency
     link_cols = sorted([col for col in df.columns if col == 'link' or col.startswith('link_')])

@@ -5,7 +5,7 @@ Create Data Collection Script Task
 Generates XML scripts for SpeechRecorder data collection sessions.
 
 The script creates prompts with:
-- Primary gloss (required)
+- Primary gloss (required; rows with a blank primary gloss are skipped)
 - Secondary gloss (optional)
 - Sentence frame (optional)
 - Extra information (optional)
@@ -14,7 +14,7 @@ Supports multiple token repetitions and selective frame application.
 """
 
 import pandas as pd
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass
@@ -23,6 +23,20 @@ class ScriptResult:
     success: bool
     script: str | None = None
     error: str | None = None
+    # Index values of rows left out because their primary gloss was blank
+    skipped_indices: list[str] = field(default_factory=list)
+
+
+def _is_blank(value) -> bool:
+    """True for NaN/None cells and strings that are empty or only whitespace."""
+    return pd.isna(value) or str(value).strip() == ""
+
+
+def _format_index(value) -> str:
+    """Render an index cell as text, dropping the '.0' pandas adds to whole numbers."""
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    return str(value)
 
 
 def assemble_prompt_dict(
@@ -60,6 +74,10 @@ def assemble_prompt_dict(
     prompt_dict = {}
 
     for _, row in df.iterrows():
+        # Nothing to prompt the speaker with; generate_script reports these
+        if _is_blank(row[primary_gloss_col]):
+            continue
+
         row_dict = {}
 
         # Add index
@@ -243,6 +261,19 @@ def generate_script(
     if error:
         return ScriptResult(success=False, error=error)
 
+    skipped_indices = [
+        _format_index(row[index_col])
+        for _, row in df.iterrows()
+        if _is_blank(row[primary_gloss_col])
+    ]
+
+    if not prompt_dict:
+        return ScriptResult(
+            success=False,
+            error=f"Every row has a blank '{primary_gloss_col}' cell, so there is nothing to prompt with.",
+            skipped_indices=skipped_indices,
+        )
+
     # Build all prompts
     prompt_list = []
 
@@ -258,4 +289,4 @@ def generate_script(
     # Build final script
     script = build_script(prompts)
 
-    return ScriptResult(success=True, script=script)
+    return ScriptResult(success=True, script=script, skipped_indices=skipped_indices)

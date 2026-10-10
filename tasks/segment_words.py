@@ -20,8 +20,11 @@ Processing pipeline:
 import re
 import pandas as pd
 import string
+import unicodedata
 from collections import Counter
 from dataclasses import dataclass, field
+
+from tasks.colon_check import SEGMENT_COLUMNS, colon_error_message, find_colons, format_row_id
 
 
 # =============================================================================
@@ -34,6 +37,8 @@ class SegmentationResult:
     success: bool
     df: pd.DataFrame | None = None
     error: str | None = None
+    # Column -> row IDs of cells containing colons (set when that's the error)
+    colon_locations: dict[str, list[str]] = field(default_factory=dict)
     cleaning_report: dict = field(default_factory=dict)
     summary: dict = field(default_factory=dict)
 
@@ -69,8 +74,9 @@ IPA_VOWELS = [
 ]
 
 IPA_DIACRITICS = [
-    'ʰ','ʷ','ʲ','ˠ','ˤ','ʽ','ʼ','ͅ','ʻ','̥','̊','̬','̪','̺','̻','̼',
+    'ʰ','ʱ','ʷ','ʲ','ˠ','ˤ','ʽ','ʼ','ͅ','ʻ','̥','̊','̬','̪','̺','̻','̼',
     '̣','᷂','ᵐ','ᶬ','ⁿ','ᶯ','ᶮ','ᵑ','ᶰ','ˀ','ˁ','ˑ','ː','̤','̰','̃','̩',
+    '͡',  # tie (over-tie); must join two consonants - see TIED_UNIT_PATTERN
 ]
 
 IPA_TONES = [
@@ -81,6 +87,94 @@ IPA_TONES = [
 
 ALL_IPA_CHARS = set(IPA_CONSONANTS + IPA_VOWELS + IPA_DIACRITICS + IPA_TONES)
 
+
+# =============================================================================
+# Precomposed character conversion
+# =============================================================================
+# The same symbol can be typed as one precomposed character (ã, U+00E3) or as
+# a base letter plus combining mark(s) (a + U+0303). They look identical, but
+# Excelerant's inventory above only accepts one form of each, so transcriptions
+# are converted to that form before cleaning and segmentation.
+#
+# Both maps are derived from Unicode's canonical decompositions:
+# - PRECOMPOSED_CONVERSIONS: precomposed characters not in the inventory whose
+#   decomposition is made entirely of inventory characters (ã -> a + ̃).
+#   Characters that don't fully decompose into the inventory (e.g. ä, whose
+#   diaeresis isn't in it) are left alone and reported as non-IPA as before.
+# - DECOMPOSED_CONVERSIONS: base + combining sequences whose precomposed form
+#   IS the inventory's form (c + ̧ -> ç).
+
+# Unicode blocks holding precomposed Latin letters
+_PRECOMPOSED_RANGES = [(0x00C0, 0x024F), (0x1E00, 0x1EFF)]
+
+
+def _build_precomposed_maps(accepted: set[str]) -> tuple[dict[str, str], dict[str, str]]:
+    precomposed = {}
+    for start, end in _PRECOMPOSED_RANGES:
+        for codepoint in range(start, end + 1):
+            char = chr(codepoint)
+            decomposed = unicodedata.normalize("NFD", char)
+            if char not in accepted and decomposed != char and all(c in accepted for c in decomposed):
+                precomposed[char] = decomposed
+
+    decomposed_map = {}
+    for char in accepted:
+        decomposed = unicodedata.normalize("NFD", char)
+        if decomposed != char:
+            decomposed_map[decomposed] = char
+
+    return precomposed, decomposed_map
+
+
+# Lookalikes mapped to the symbol Excelerant's conventions use. Applied before
+# the Unicode-derived maps (so ñ becomes ɲ rather than n + combining tilde).
+LOOKALIKE_CONVERSIONS = {
+    "ñ": "ɲ",         # ñ (precomposed) -> palatal nasal
+    "ñ": "ɲ",        # n + combining tilde -> palatal nasal
+    "ɡ": "g",         # IPA script ɡ -> g, the form the inventory uses
+    "͜": "͡",    # under-tie -> over-tie
+}
+
+PRECOMPOSED_CONVERSIONS, DECOMPOSED_CONVERSIONS = _build_precomposed_maps(ALL_IPA_CHARS)
+for _char in LOOKALIKE_CONVERSIONS:
+    PRECOMPOSED_CONVERSIONS.pop(_char, None)
+
+
+def _convert(text: str, counts: Counter | None = None) -> str:
+    """Apply LOOKALIKE_CONVERSIONS, then DECOMPOSED_CONVERSIONS, then
+    PRECOMPOSED_CONVERSIONS, tallying each conversion into counts if given.
+    Lookalikes are tallied as 'from → to' so the report shows the change."""
+    for mapping, label in ((LOOKALIKE_CONVERSIONS, True), (DECOMPOSED_CONVERSIONS, False)):
+        for sequence, replacement in mapping.items():
+            n = text.count(sequence)
+            if n:
+                if counts is not None:
+                    counts[f"{sequence} → {replacement}" if label else replacement] += n
+                text = text.replace(sequence, replacement)
+    if counts is not None:
+        counts.update(char for char in text if char in PRECOMPOSED_CONVERSIONS)
+    return "".join(PRECOMPOSED_CONVERSIONS.get(char, char) for char in text)
+
+
+def convert_precomposed(text: str) -> str:
+    """Convert lookalike and visually identical character forms to the ones
+    Excelerant's IPA inventory uses (see LOOKALIKE_CONVERSIONS,
+    PRECOMPOSED_CONVERSIONS and DECOMPOSED_CONVERSIONS). Combining marks the
+    user typed separately are left in their order."""
+    return _convert(text)
+
+
+def convert_precomposed_column(series: pd.Series) -> tuple[pd.Series, dict[str, int]]:
+    """Apply convert_precomposed to the text cells of a column (other cells,
+    e.g. NaN, are left as they are).
+
+    Returns (converted series, {character converted: number of occurrences}).
+    """
+    counts = Counter()
+    converted = series.map(lambda v: _convert(v, counts) if isinstance(v, str) else v)
+    return converted, {char: n for char, n in counts.most_common()}
+
+
 # Phonological inventory sets for onset processing
 AFFRICATES = {
     'pɸ','bβ','pf','bv','tθ','t̪θ','dð','d̪ð','ts','dz','tɬ','dɮ',
@@ -88,9 +182,13 @@ AFFRICATES = {
     'qχ','ɢʁ',
 }
 
+# Consonants that can carry aspiration (ʰ, or ʱ for voiced aspiration):
+# voiceless stops/affricates, plus voiced stops/affricates (bʰ, bʱ, dʑʱ)
 CAN_ASPIRATE = {
     'p','t̪','t','ʈ','ȶ','c','k','q','s','pɸ','pf','tθ','t̪θ',
     'ts','tɬ','tʃ','ʈʂ','tɕ','ȶɕ','cç','kx','qχ',
+    'b','d̪','d','ɖ','ȡ','ɟ','g','ɢ','bβ','bv','dð','d̪ð',
+    'dz','dɮ','dʒ','ɖʐ','dʑ','ȡʑ','ɟʝ','gɣ','ɢʁ',
 }
 
 NASALS = {'m','n̪','n','ɳ','ȵ','ɲ','ŋ','ɴ', 'ᵐ','ⁿ','ᶮ','ᵑ','ᶰ'}
@@ -104,8 +202,62 @@ VOWELS_SET = {
 
 CONS_RIMES = NASALS | {'r','ɾ','ɹ','l'}
 
-ASPIRATION_MARKERS = {'ʰ','h'}
+# Full-size h / ɦ after an aspirable consonant are read as ʰ / ʱ (see _update_markers)
+ASPIRATION_MARKERS = {'ʰ','ʱ','h','ɦ'}
 GLOTTAL_MARKERS = {'ˀ','ʔ'}
+
+
+# =============================================================================
+# Tied units (affricates, double articulations)
+# =============================================================================
+# A tie joins two consonants into one segment: t͡s, t͡ɕ, k͡p, g͡b, ŋ͡m. Each
+# consonant may carry combining diacritics (t̪͡s̪). Before onset parsing every
+# tied unit is swapped for a single placeholder character, so the onset rules
+# treat it as one consonant; the tie is restored in the output. Untied
+# sequences (kp) are not treated as units.
+
+TIE = '͡'
+_TIE_CONSONANTS = ''.join(sorted(set(IPA_CONSONANTS) - VOWELS_SET - {'∅'}))
+_TIE_MARKS = ''.join(c for c in IPA_DIACRITICS if unicodedata.combining(c) and c != TIE)
+_TIE_SIDE = f'[{re.escape(_TIE_CONSONANTS)}][{re.escape(_TIE_MARKS)}]*'
+TIED_UNIT_PATTERN = re.compile(f'{_TIE_SIDE}{TIE}{_TIE_SIDE}')
+
+# Placeholders for tied units (syllabic consonants use U+E000 upward)
+_TIED_PLACEHOLDER_BASE = 0xE800
+
+
+def check_ties(word_text: str) -> str | None:
+    """Error message if a tie in word_text doesn't join two consonants."""
+    if TIE in word_text and TIE in TIED_UNIT_PATTERN.sub('', word_text):
+        return "tie (◌͡◌) must join two consonants"
+    return None
+
+
+def preprocess_tied_units(series: pd.Series) -> tuple[pd.Series, dict[str, str]]:
+    """Replace each tied unit with a placeholder character.
+
+    Returns (series, {placeholder: tied unit})."""
+    units = sorted({unit for text in series for unit in TIED_UNIT_PATTERN.findall(text)})
+    if not units:
+        return series, {}
+    placeholders = {unit: chr(_TIED_PLACEHOLDER_BASE + i) for i, unit in enumerate(units)}
+    converted = series.map(lambda text: TIED_UNIT_PATTERN.sub(lambda m: placeholders[m.group()], text))
+    return converted, {ph: unit for unit, ph in placeholders.items()}
+
+
+def restore_tied_units(text, tied_units: dict[str, str]):
+    """Swap placeholders back to their tied units (non-strings unchanged)."""
+    if not isinstance(text, str):
+        return text
+    for placeholder, unit in tied_units.items():
+        text = text.replace(placeholder, unit)
+    return text
+
+
+def _tied_unit_sides(unit: str) -> tuple[str, str]:
+    """The base consonants on either side of a tied unit's tie."""
+    left, right = unit.split(TIE)
+    return left[0], right[0]
 
 BASE_VOWELS_STR = 'iɪeɛæayʏøœɶɨɘəɜɵɐʉɯɤʌɑuʊoɔɒɿ'
 
@@ -136,6 +288,9 @@ def clean_transcription_column(df: pd.DataFrame, col: str) -> tuple[pd.DataFrame
 
     original = df[col].copy()
     df[col] = df[col].astype(str)
+
+    # Convert precomposed/decomposed characters to the inventory's form
+    df[col], report["precomposed_converted"] = convert_precomposed_column(df[col])
 
     # Normalize Unicode whitespace
     unicode_spaces = [
@@ -378,7 +533,11 @@ def split_around_vowels(
     # Build vowel pattern including syllabic placeholders
     syllabic_placeholders = ''.join(reverse_map.keys()) if reverse_map else ''
     all_vowel_chars = BASE_VOWELS_STR + syllabic_placeholders
-    vowel_pattern = re.compile(f'[{re.escape(all_vowel_chars)}]+[ː̃]*')
+    # A vowel complex is a vowel sequence with optional length/nasal marks.
+    # It continues past a length mark when another vowel follows, so a long
+    # vowel with an offglide (e.g. iːə, uːə, aːi) is one V unit.
+    vowels = f'[{re.escape(all_vowel_chars)}]+[ː̃]*'
+    vowel_pattern = re.compile(f'{vowels}(?:(?<=ː){vowels})*')
 
     def split_word(word_str):
         """Split word around the right-most vowel complex."""
@@ -416,6 +575,7 @@ def split_around_vowels(
 def _update_markers(mystring: str) -> str:
     """Update aspiration and glottal markers to superscript."""
     mystring = mystring.replace('h', 'ʰ')
+    mystring = mystring.replace('ɦ', 'ʱ')
     mystring = mystring.replace('ʔ', 'ˀ')
     return mystring
 
@@ -520,8 +680,6 @@ def _parse_main_onset(onset):
     c3 = onset[2]
 
     if n == 3:
-        if c2 == '͡':
-            return (c1 + c3, '')
         if c1 + c2 in AFFRICATES and c3 in ASPIRATION_MARKERS:
             return (c1 + c2 + _update_markers(c3), '')
         if c1 + c2 in AFFRICATES and c3 in MEDIALS:
@@ -535,18 +693,8 @@ def _parse_main_onset(onset):
     c4 = onset[3]
 
     if n == 4:
-        if c2 == '͡' and c4 in MEDIALS:
-            return (c1 + c3, c4)
-        if c2 == '͡' and c4 in ASPIRATION_MARKERS:
-            return (c1 + c3 + _update_markers(c4), '')
         if c1 + c2 in AFFRICATES and c3 in ASPIRATION_MARKERS and c4 in MEDIALS:
             return (c1 + c2 + _update_markers(c3), c4)
-        return None
-
-    if n == 5:
-        c5 = onset[4]
-        if c2 == '͡' and c4 in ASPIRATION_MARKERS and c5 in MEDIALS:
-            return (c1 + c3 + _update_markers(c4), c5)
         return None
 
     return None
@@ -608,7 +756,12 @@ def _try_presyllable_split(onset):
 # Process onsets (the big phonological rules function)
 # =============================================================================
 
-def process_onsets(df: pd.DataFrame, parts_col: str = 'parts', word_col: str = 'word'):
+def process_onsets(
+    df: pd.DataFrame,
+    parts_col: str = 'parts',
+    word_col: str = 'word',
+    tied_units: dict[str, str] | None = None,
+):
     """
     Process onsets to identify presyllables, complex segments, and medials.
 
@@ -619,6 +772,10 @@ def process_onsets(df: pd.DataFrame, parts_col: str = 'parts', word_col: str = '
         df: DataFrame with 'parts' column containing [onset, vowel, coda] lists
         parts_col: Column name for the parts lists
         word_col: Column name for word transcriptions
+        tied_units: Placeholder -> tied unit (from preprocess_tied_units).
+            Each placeholder is one consonant to these rules; it can take
+            aspiration if its first consonant can, and is a nasal if both
+            of its consonants are.
 
     Returns:
         Updated DataFrame with P, R, C, M, V, F columns filled
@@ -640,12 +797,16 @@ def process_onsets(df: pd.DataFrame, parts_col: str = 'parts', word_col: str = '
     )
 
     # Use local references for the inventory sets
+    tied_units = tied_units or {}
+    tied_sides = {ph: _tied_unit_sides(unit) for ph, unit in tied_units.items()}
+    tied_nasals = {ph for ph, (a, b) in tied_sides.items() if a in NASALS and b in NASALS}
+
     affricates = AFFRICATES
-    can_aspirate = CAN_ASPIRATE
-    nasals = NASALS
+    can_aspirate = CAN_ASPIRATE | {ph for ph, (a, _) in tied_sides.items() if a in CAN_ASPIRATE}
+    nasals = NASALS | tied_nasals
     medials_set = MEDIALS
     vowels = VOWELS_SET
-    cons_rimes = CONS_RIMES
+    cons_rimes = CONS_RIMES | tied_nasals
     aspiration_markers = ASPIRATION_MARKERS
     glottal_markers = GLOTTAL_MARKERS
 
@@ -692,10 +853,7 @@ def process_onsets(df: pd.DataFrame, parts_col: str = 'parts', word_col: str = '
         onset, vowel, coda = df.loc[i, parts_col]
         char1, char2, char3 = onset[0], onset[1], onset[-1]
 
-        if char2 == '͡':
-            # Tied affricate
-            _write_segments(df, i, char1 + char3, vowel, coda)
-        elif char3 in ['h', 'ʰ'] and char1 + char2 in affricates:
+        if char3 in aspiration_markers and char1 + char2 in affricates:
             char3 = _update_markers(char3)
             _write_segments(df, i, char1 + char2 + char3, vowel, coda)
         elif char1 + char2 in affricates and char3 in medials_set:
@@ -746,12 +904,7 @@ def process_onsets(df: pd.DataFrame, parts_col: str = 'parts', word_col: str = '
         onset, vowel, coda = df.loc[i, parts_col]
         char1, char2, char3, char4 = onset[0], onset[1], onset[2], onset[3]
 
-        if char2 == '͡' and char4 in medials_set:
-            _write_segments(df, i, char1 + char3, vowel, coda, M=char4)
-        elif char1 in nasals and char3 == '͡':
-            _write_segments(df, i, char2 + char4, vowel, coda,
-                            P='ʔ', R=char1)
-        elif (char1 in nasals and char2 + char3 in affricates
+        if (char1 in nasals and char2 + char3 in affricates
               and char4 in medials_set):
             _write_segments(df, i, char2 + char4, vowel, coda,
                             P='ʔ', R=char1)
@@ -837,19 +990,8 @@ def process_onsets(df: pd.DataFrame, parts_col: str = 'parts', word_col: str = '
                             M='error', P='error', R='error')
             continue
 
-        # Tied affricate (c1͡c3) + aspiration + medial
-        if (c2 == '͡' and c4 in aspiration_markers
-                and c5 in medials_set):
-            c4 = _update_markers(c4)
-            _write_segments(df, i, c1 + c3 + c4, vowel, coda, M=c5)
-        # Nasal + tied affricate (c2͡c4) + aspiration
-        elif (c1 in nasals and c3 == '͡'
-              and c5 in aspiration_markers):
-            c5 = _update_markers(c5)
-            _write_segments(df, i, c2 + c4 + c5, vowel, coda,
-                            P='ʔ', R=c1)
         # Nasal + affricate + aspiration + medial
-        elif (c1 in nasals and c2 + c3 in affricates
+        if (c1 in nasals and c2 + c3 in affricates
               and c4 in aspiration_markers and c5 in medials_set):
             c4 = _update_markers(c4)
             _write_segments(df, i, c2 + c3 + c4, vowel, coda,
@@ -943,26 +1085,8 @@ def process_onsets(df: pd.DataFrame, parts_col: str = 'parts', word_col: str = '
                             M='error', P='error', R='error')
             continue
 
-        # Nasal + tied affricate (c2͡c4) + aspiration + medial
-        if (c1 in nasals and c3 == '͡'
-                and c5 in aspiration_markers and c6 in medials_set):
-            c5 = _update_markers(c5)
-            _write_segments(df, i, c2 + c4 + c5, vowel, coda,
-                            M=c6, P='ʔ', R=c1)
-        # Presyllable + tied affricate (c3͡c5) + aspiration
-        elif (c2 in vowels | cons_rimes and c4 == '͡'
-              and c6 in aspiration_markers):
-            c6 = _update_markers(c6)
-            _write_segments(df, i, c3 + c5 + c6, vowel, coda,
-                            P=c1, R=c2)
-        # Aspirated presyllable + rime + tied affricate (c4͡c6)
-        elif (c1 in can_aspirate and c2 in aspiration_markers
-              and c3 in vowels | cons_rimes and c5 == '͡'):
-            c2 = _update_markers(c2)
-            _write_segments(df, i, c4 + c6, vowel, coda,
-                            P=c1 + c2, R=c3)
         # Presyllable + affricate + aspiration + medial
-        elif (c2 in vowels | cons_rimes and c3 + c4 in affricates
+        if (c2 in vowels | cons_rimes and c3 + c4 in affricates
               and c5 in aspiration_markers and c6 in medials_set):
             c5 = _update_markers(c5)
             _write_segments(df, i, c3 + c4 + c5, vowel, coda,
@@ -1018,6 +1142,62 @@ def process_onsets(df: pd.DataFrame, parts_col: str = 'parts', word_col: str = '
 
 
 # =============================================================================
+# Stop + h check (run by the UI before segmenting)
+# =============================================================================
+# A full-size 'h' or 'ɦ' after a consonant that can be aspirated is read as
+# aspiration (pha -> C = pʰ, bɦa -> C = bʱ). That's usually right, but sometimes the h is a separate
+# segment, so the UI warns the user and shows examples before segmenting.
+
+_ASPIRABLE_ALTERNATIVES = '|'.join(re.escape(c) for c in sorted(CAN_ASPIRATE, key=len, reverse=True))
+_STOP_H_PATTERN = re.compile(f'(?:{TIED_UNIT_PATTERN.pattern}|{_ASPIRABLE_ALTERNATIVES})[hɦ]')
+
+
+def _has_stop_h(word_text: str) -> bool:
+    for match in _STOP_H_PATTERN.finditer(word_text):
+        unit = match.group()[:-1]
+        # A tied unit is only aspirated if its first consonant can be (not ŋ͡m)
+        if TIE not in unit or unit[0] in CAN_ASPIRATE:
+            return True
+    return False
+
+
+@dataclass
+class StopHCheck:
+    """Words where a full-size 'h' or 'ɦ' follows a stop/affricate."""
+    row_labels: list = field(default_factory=list)
+    row_ids: list[str] = field(default_factory=list)
+    # Example rows: original word plus the segmentation Excelerant will give it
+    examples: pd.DataFrame | None = None
+
+
+def check_stop_h(df: pd.DataFrame, word_col: str = 'word', example_limit: int = 20) -> StopHCheck:
+    """Find words containing stop/affricate + full-size 'h'/'ɦ', which segmentation
+    reads as one aspirated consonant, and segment up to example_limit of them
+    to show the user what that will look like."""
+    is_text = df[word_col].map(lambda v: isinstance(v, str))
+    labels = [label for label in df.index[is_text] if _has_stop_h(df.at[label, word_col])]
+    if not labels:
+        return StopHCheck()
+
+    sample = df.loc[labels[:example_limit]]
+    examples = None
+    preview = segment_words(sample, word_col)
+    if preview.success and len(preview.df) == len(sample):
+        examples = pd.DataFrame({
+            'ID': [format_row_id(df, label) for label in sample.index],
+            'Word': sample[word_col].tolist(),
+        })
+        for col in ['P', 'R', 'C', 'M', 'V', 'F', 'T']:
+            examples[col] = preview.df[col].tolist()
+
+    return StopHCheck(
+        row_labels=labels,
+        row_ids=[format_row_id(df, label) for label in labels],
+        examples=examples,
+    )
+
+
+# =============================================================================
 # Main entry point
 # =============================================================================
 
@@ -1047,14 +1227,22 @@ def segment_words(
             error=f"Word column '{word_col}' not found in database.",
         )
 
-    # Check for NaN
-    nan_count = df[word_col].isna().sum()
-    if nan_count > 0:
+    # Colons may or may not be length marks, so the user must resolve them
+    # (cleaning would otherwise delete them as punctuation)
+    colon_locations = find_colons(df, [word_col] + SEGMENT_COLUMNS)
+    if colon_locations:
         return SegmentationResult(
             success=False,
-            error=f"Found {nan_count} empty values in '{word_col}' column. "
-                  f"All words must have values.",
+            error=colon_error_message(colon_locations),
+            colon_locations=colon_locations,
         )
+
+    # Set aside rows with no word (untranscribed items); they're added back
+    # at the end with blank segmentation columns, in their original position
+    df['_row_order'] = range(len(df))
+    blank_mask = df[word_col].isna() | (df[word_col].astype(str).str.strip() == '')
+    df_untranscribed = df[blank_mask].copy()
+    df = df[~blank_mask].copy()
 
     # Step 2: Clean word column
     df, cleaning_report = clean_transcription_column(df, word_col)
@@ -1093,6 +1281,13 @@ def segment_words(
             error_words[word_text] = f"non-IPA characters: {chars_str}"
             continue
 
+        # Check ties join two consonants
+        tie_error = check_ties(word_text)
+        if tie_error:
+            error_mask.at[idx] = True
+            error_words[word_text] = tie_error
+            continue
+
         # Check Chao numbers
         chao_error = validate_chao_numbers(word_text)
         if chao_error:
@@ -1128,6 +1323,10 @@ def segment_words(
             # Update word column (tones removed)
             df.loc[good_mask, word_col] = df_good[word_col]
 
+            # Tied units (t͡s, k͡p) become single placeholder characters so
+            # the vowel split and onset rules treat each as one consonant
+            df_good[word_col], tied_units = preprocess_tied_units(df_good[word_col])
+
             # Split around vowels
             df_good, _ = split_around_vowels(df_good, word_col)
 
@@ -1147,7 +1346,11 @@ def segment_words(
 
             # Process onsets for remaining good rows
             if len(df_good) > 0:
-                df_processed = process_onsets(df_good, 'parts', word_col)
+                df_processed = process_onsets(df_good, 'parts', word_col, tied_units=tied_units)
+                for col in ['P', 'R', 'C', 'M', 'V', 'F']:
+                    df_processed[col] = df_processed[col].map(
+                        lambda v: restore_tied_units(v, tied_units)
+                    )
 
                 # Copy results back
                 for col in ['P', 'R', 'C', 'M', 'V', 'F']:
@@ -1176,10 +1379,19 @@ def segment_words(
     error_count = (df['C'] == 'error').sum()
     success_count = total_words - error_count
 
+    # Add untranscribed rows back in their original position
+    if len(df_untranscribed) > 0:
+        for col in seg_cols:
+            df_untranscribed[col] = ''
+        df = (pd.concat([df, df_untranscribed])
+              .sort_values('_row_order', kind='stable'))
+    df = df.drop(columns=['_row_order']).reset_index(drop=True)
+
     summary = {
         "words_segmented": success_count,
         "error_count": error_count,
         "total_words": total_words,
+        "untranscribed_rows": len(df_untranscribed),
         "error_words": error_words,
         "tone_splits": tone_splits,
     }

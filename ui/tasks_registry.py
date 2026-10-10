@@ -2,6 +2,17 @@
 ui/tasks_registry.py
 Task catalog: what tasks exist, their metadata, which are enabled, and
 which menu category each belongs to.
+
+Tasks are grouped by the welcome-screen section whose task menu lists them:
+- Collect Data -> "Collect Data"
+- Manage Database -> "Configure Audio", "Configure Transcriptions"
+- Analyze Phonology / Develop Orthography -> "Participatory Card Sorting"
+  (both sections' hubs lead to the same card-sorting menu)
+- Analyze Phonology -> "Analyze Phonology" (planned, not yet enabled)
+- Analyze Phonetics -> "Analyze Phonetics" (planned, not yet enabled)
+
+Develop Orthography's other branch, Script Conversion, is a standalone screen
+off the Orthography hub, not a database task, so it isn't listed here.
 """
 
 from dataclasses import dataclass
@@ -21,11 +32,11 @@ class TaskInfo:
 
 # Define all tasks
 TASKS = {
-    # Collect Lexical Data
+    # ── Collect Data ────────────────────────────────────────────────────
     "create_data_collection_script": TaskInfo(
         id="create_data_collection_script",
         name="Create Data Collection Script",
-        category="Collect Lexical Data",
+        category="Collect Data",
         description="Generate an XML script for [SpeechRecorder](https://www.bas.uni-muenchen.de/Bas/software/speechrecorder/) to collect audio recordings. Maps database columns to prompt fields (gloss, index, frame, extra info) and supports multiple token repetitions.",
         requirements=[
             "Database must have 'index' and 'gloss' columns populated",
@@ -37,7 +48,7 @@ TASKS = {
     "create_prompts_list": TaskInfo(
         id="create_prompts_list",
         name="Create Prompts List (Android)",
-        category="Collect Lexical Data",
+        category="Collect Data",
         description="Generate a prompt-list file for the **Prompts** Android app - an offline, one-prompt-at-a-time audio elicitation app for recording in the field straight from a phone. Maps database columns to the app's fields (vernacular gloss shown large, optional English gloss and IPA for the surveyor) and exports a .csv or .xlsx the app imports.",
         requirements=[
             "Database must have an 'index' column and a column of text to prompt with",
@@ -47,6 +58,7 @@ TASKS = {
         youtube_url=None,
     ),
 
+    # ── Manage Database ─────────────────────────────────────────────────
     # Configure Audio
     "add_audio_links": TaskInfo(
         id="add_audio_links",
@@ -112,11 +124,11 @@ TASKS = {
         youtube_url=None,
     ),
 
-    # Phonological Analysis
+    # ── Analyze Phonology (planned) ─────────────────────────────────────
     "generate_phoneme_charts": TaskInfo(
         id="generate_phoneme_charts",
         name="Generate Phoneme Charts",
-        category="Phonological Analysis",
+        category="Analyze Phonology",
         description="Create consonant and vowel charts showing the phoneme inventory of the language based on your transcribed data.",
         requirements=[
             "IPA transcriptions in database",
@@ -128,7 +140,7 @@ TASKS = {
     "generate_contrast_examples": TaskInfo(
         id="generate_contrast_examples",
         name="Generate Examples of Contrast",
-        category="Phonological Analysis",
+        category="Analyze Phonology",
         description="Find minimal pairs and near-minimal pairs that demonstrate phonemic contrasts. Essential for phonological argumentation.",
         requirements=[
             "IPA transcriptions in database",
@@ -138,11 +150,11 @@ TASKS = {
         youtube_url=None,
     ),
 
-    # Orthography Development
+    # ── Participatory Card Sorting (Analyze Phonology / Develop Orthography)
     "generate_cards": TaskInfo(
         id="generate_cards",
         name="Generate Cards",
-        category="Orthography Development",
+        category="Participatory Card Sorting",
         description="Generate cards for orthography-development card-sorting activities. Filter your database down to the rows you want, pick which columns appear on each card, and export either a printable Letter-size HTML deck (10 cards/page, Lao- and IPA-aware fonts) for physical sorting, or a prepared-activity JSON to hand off for digital/asynchronous sorting in Sort Cards.",
         requirements=[
             "Database must have an 'index' column (a 'sub_index' column is used automatically if present)",
@@ -154,7 +166,7 @@ TASKS = {
     "process_cards": TaskInfo(
         id="process_cards",
         name="Process Cards",
-        category="Orthography Development",
+        category="Participatory Card Sorting",
         description="Record the results of a card-sorting activity back into the database. Name the activity, then create a category for each pile the cards were sorted into and supply the UID (from the bottom-right of each card) for every card in that pile -- typed in by hand or read from photos by AI. A new column is added to the database with the category label on each matching row.",
         requirements=[
             "Database must have an 'index' column (a 'sub_index' column is used automatically if present)",
@@ -166,7 +178,7 @@ TASKS = {
     "sort_cards": TaskInfo(
         id="sort_cards",
         name="Sort Cards",
-        category="Orthography Development",
+        category="Participatory Card Sorting",
         description="Digital, in-app card sorting -- an alternative to printing cards when that isn't practical, or for handing a sorting task off to someone else. One card is shown at a time; assign it to a pile (or skip it) until the deck is empty, naming piles as you go. Sort Cards doesn't write to the database itself -- finish a sort to export a results file, then bring it into the database with Process Cards.",
         requirements=[
             "Database must have an 'index' column (a 'sub_index' column is used automatically if present)",
@@ -176,11 +188,11 @@ TASKS = {
         youtube_url=None,
     ),
 
-    # Acoustic Phonetic Analysis
+    # ── Analyze Phonetics (planned) ─────────────────────────────────────
     "force_align_textgrids": TaskInfo(
         id="force_align_textgrids",
         name="Generate Draft TextGrids with Forced Alignment",
-        category="Acoustic Phonetic Analysis",
+        category="Analyze Phonetics",
         description="Automatically align transcriptions to audio using forced alignment. Creates Praat TextGrids with word and phone boundaries.",
         requirements=[
             "Audio files linked to database",
@@ -193,7 +205,7 @@ TASKS = {
     "extract_acoustic_measurements": TaskInfo(
         id="extract_acoustic_measurements",
         name="Extract Acoustic Data",
-        category="Acoustic Phonetic Analysis",
+        category="Analyze Phonetics",
         description="Extract acoustic features like F0, formants, duration, and intensity from aligned audio segments.",
         requirements=[
             "Force-aligned TextGrids",
@@ -205,7 +217,7 @@ TASKS = {
     "generate_plots": TaskInfo(
         id="generate_plots",
         name="Generate Plots",
-        category="Acoustic Phonetic Analysis",
+        category="Analyze Phonetics",
         description="Create publication-ready visualizations: vowel plots, f0 contours, spectrograms, and more.",
         requirements=[
             "Acoustic measurements extracted",
@@ -216,7 +228,7 @@ TASKS = {
     "statistical_analysis": TaskInfo(
         id="statistical_analysis",
         name="Statistical Analysis",
-        category="Acoustic Phonetic Analysis",
+        category="Analyze Phonetics",
         description="Run statistical tests on acoustic data: t-tests, ANOVA, mixed-effects models for phonetic comparisons.",
         requirements=[
             "Acoustic measurements extracted",
@@ -229,12 +241,12 @@ TASKS = {
 
 # Group tasks by category (preserving order)
 TASK_CATEGORIES = [
-    "Collect Lexical Data",
+    "Collect Data",
     "Configure Audio",
     "Configure Transcriptions",
-    "Phonological Analysis",
-    "Orthography Development",
-    "Acoustic Phonetic Analysis",
+    "Participatory Card Sorting",
+    "Analyze Phonology",
+    "Analyze Phonetics",
 ]
 
 # Tasks that are currently implemented and enabled
@@ -254,10 +266,11 @@ ENABLED_TASKS = {
 # (Tasks are filtered by both ENABLED_TASKS and this mapping, so a task
 # belongs on exactly the menu(s) for its category.)
 MENU_CATEGORIES = {
-    "collect": ["Collect Lexical Data"],
+    "collect": ["Collect Data"],
     # Audio linking + transcription prep - database housekeeping, not analysis.
     "manage": ["Configure Audio", "Configure Transcriptions"],
-    "phonological": ["Phonological Analysis"],
-    "orthography": ["Orthography Development"],
-    "acoustic": ["Acoustic Phonetic Analysis"],
+    # Shared by the Analyze Phonology and Develop Orthography hubs.
+    "card_sorting": ["Participatory Card Sorting"],
+    "phonological": ["Analyze Phonology"],
+    "acoustic": ["Analyze Phonetics"],
 }

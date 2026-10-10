@@ -83,13 +83,13 @@ def screen_process_cards():
         with method_col1:
             if st.session_state._process_cards_method == "manual":
                 _method_pill("Manual Input")
-            elif st.button("Manual Input", use_container_width=True):
+            elif st.button("Manual Input", width="stretch"):
                 st.session_state._process_cards_method = "manual"
                 st.rerun()
         with method_col2:
             if st.session_state._process_cards_method == "ai":
                 _method_pill("AI-Assisted Input")
-            elif st.button("AI-Assisted Input", use_container_width=True):
+            elif st.button("AI-Assisted Input", width="stretch"):
                 st.session_state._process_cards_method = "ai"
                 st.rerun()
 
@@ -197,7 +197,7 @@ def screen_process_cards():
 
             if st.button(
                 "Parse & Fill Categories",
-                use_container_width=True,
+                width="stretch",
                 disabled=not ai_paste_text.strip(),
             ):
                 parse_result = parse_ai_assisted_output(ai_paste_text)
@@ -263,7 +263,7 @@ def screen_process_cards():
                     label_visibility="collapsed",
                 )
             with cat_remove_col:
-                if st.button("✕", key=f"_pc_remove_{cat_id}", use_container_width=True, help="Remove this category"):
+                if st.button("✕", key=f"_pc_remove_{cat_id}", width="stretch", help="Remove this category"):
                     st.session_state._process_cards_categories.remove(cat_id)
                     for key in (label_key, uids_key):
                         if key in st.session_state:
@@ -285,7 +285,7 @@ def screen_process_cards():
 
             st.markdown("")
 
-        if st.button("+ Add Category", use_container_width=True):
+        if st.button("+ Add Category", width="stretch"):
             new_id = st.session_state._process_cards_next_id
             st.session_state._process_cards_categories.append(new_id)
             st.session_state._process_cards_next_id = new_id + 1
@@ -303,7 +303,7 @@ def screen_process_cards():
         process_clicked = st.button(
             "Process Cards",
             type="primary",
-            use_container_width=True,
+            width="stretch",
             disabled=not can_process,
         )
 
@@ -324,7 +324,7 @@ def screen_process_cards():
 
         st.markdown("")
 
-        if st.button("Back to Main Menu", use_container_width=True):
+        if st.button("Back to Main Menu", width="stretch"):
             _clear_process_cards_state()
             go_back_to_menu()
 
@@ -376,11 +376,11 @@ def screen_process_cards():
                         file_name="database_processed.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                         type="primary",
-                        use_container_width=True,
+                        width="stretch",
                     )
 
                 with btn_col2:
-                    if st.button("Return to Main Menu", use_container_width=True, key="return_after_process_cards"):
+                    if st.button("Return to Main Menu", width="stretch", key="return_after_process_cards"):
                         del st.session_state._process_cards_result
                         _clear_process_cards_state()
                         go_back_to_menu()
@@ -391,7 +391,7 @@ def screen_process_cards():
                 st.caption("Showing only rows updated by this activity.")
                 preview_cols = [c for c in [index_col, sub_index_col, result.column_name] if c]
                 updated_rows = result.df[result.df[result.column_name].notna()]
-                st.dataframe(updated_rows[preview_cols].head(20), use_container_width=True)
+                st.dataframe(updated_rows[preview_cols].head(20), width="stretch")
 
             else:
                 st.error(f"**Error:** {result.error}")
@@ -412,7 +412,7 @@ def screen_process_cards():
 
                 st.markdown("---")
 
-                if st.button("Back to Configuration", use_container_width=True):
+                if st.button("Back to Configuration", width="stretch"):
                     del st.session_state._process_cards_result
                     st.rerun()
 
@@ -448,4 +448,4 @@ def screen_process_cards():
                 "sub_index": [1, 1, 1, 1],
                 "front_p": ["i", "i", "e", None],
             })
-            st.dataframe(example_df, use_container_width=True, hide_index=True)
+            st.dataframe(example_df, width="stretch", hide_index=True)

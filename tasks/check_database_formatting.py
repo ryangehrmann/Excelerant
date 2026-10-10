@@ -6,8 +6,13 @@ Validates database formatting and reconstructs entries from words.
 
 Required columns: index, sub_index, entry, gloss, word
 
+Untranscribed rows (blank entry and blank word, in a group with no other words)
+are set aside before validation and added back afterwards with sub_index 1.
+
 Validation checks:
-- No blanks in index, sub_index, entry, word
+- No colons in entry, word or segment columns (they may or may not be length
+  marks, so the user resolves them)
+- No blanks in index, sub_index, entry, word (except untranscribed rows)
 - index values must be integers
 - sub_index values must be integers
 - entry values must be strings
@@ -16,12 +21,33 @@ Validation checks:
 - sub_index must start at 1 and be sequential per index (auto-fixed if possible)
 
 Processing:
-- Renames 'entry' to 'entry_orig'
+- Converts lookalike/precomposed characters in entry, word and segment
+  columns to Excelerant's forms (see segment_words.convert_precomposed)
 - Creates new 'entry' from space-joined words in sub_index order per index group
+- If any entry changed, archives the previous entries as
+  'entry_before_YYYY-MM-DD' (today's date; '_2', '_3', ... for repeat runs on
+  the same day), placed just before 'entry'. If nothing changed, nothing is
+  archived. Every run that changes something adds one dated column, so the
+  database keeps a history of its revisions.
 """
+
+import datetime
+from collections import Counter
 
 import pandas as pd
 from dataclasses import dataclass, field
+
+from tasks.colon_check import (
+    COLON_RECOMMENDATION,
+    SEGMENT_COLUMNS,
+    colon_error_message,
+    find_colons,
+)
+
+from tasks.segment_words import convert_precomposed_column
+
+# Temporary name for the pre-update entries while the new ones are built
+_PREVIOUS_ENTRY = "_entry_before"
 
 
 # Required columns for this task
@@ -44,6 +70,8 @@ class ValidationError:
     message: str
     details: list[str] = field(default_factory=list)
     recommendation: str = ""
+    # Column -> row IDs of cells containing colons (error_type "colons")
+    colon_locations: dict[str, list[str]] = field(default_factory=dict)
 
 
 @dataclass
@@ -121,6 +149,33 @@ def normalize_dataframe_columns(df: pd.DataFrame, column_mapping: dict[str, str]
     return df
 
 
+def _is_blank(series: pd.Series) -> pd.Series:
+    """True for NaN cells and cells that are empty or only whitespace."""
+    return series.isna() | (series.astype(str).str.strip() == "")
+
+
+def find_untranscribed_rows(
+    df: pd.DataFrame,
+    categorical_columns: list[str] | None = None,
+) -> pd.Series:
+    """
+    Mask of untranscribed rows: blank entry and blank word, with an index and
+    no other row in the same group (index + categorical columns) that has a word.
+
+    A blank word inside a group that has other words is a real gap, so those
+    rows are left for validate_no_blanks to report.
+    """
+    cat_cols = categorical_columns or []
+    group_cols = ["index"] + cat_cols
+
+    candidate = _is_blank(df["entry"]) & _is_blank(df["word"]) & ~df["index"].isna()
+    group_has_word = (~_is_blank(df["word"])).groupby(
+        [df[col].astype(str) for col in group_cols]
+    ).transform("any")
+
+    return candidate & ~group_has_word
+
+
 def validate_no_blanks(df: pd.DataFrame) -> ValidationError | None:
     """
     Check that index, sub_index, entry, and word columns have no blanks.
@@ -174,7 +229,7 @@ def validate_index_integers(df: pd.DataFrame) -> ValidationError | None:
     """
     invalid_details = []
 
-    for i, val in enumerate(df["index"]):
+    for i, val in df["index"].items():
         if pd.isna(val):
             continue  # Already checked by validate_no_blanks
 
@@ -214,7 +269,7 @@ def validate_sub_index_integers(df: pd.DataFrame) -> ValidationError | None:
     """
     invalid_details = []
 
-    for i, val in enumerate(df["sub_index"]):
+    for i, val in df["sub_index"].items():
         if pd.isna(val):
             continue  # Already checked by validate_no_blanks
 
@@ -254,7 +309,7 @@ def validate_entry_strings(df: pd.DataFrame) -> ValidationError | None:
     """
     invalid_details = []
 
-    for i, val in enumerate(df["entry"]):
+    for i, val in df["entry"].items():
         if pd.isna(val):
             continue  # Already checked by validate_no_blanks
 
@@ -287,7 +342,7 @@ def validate_word_strings(df: pd.DataFrame) -> ValidationError | None:
     """
     invalid_details = []
 
-    for i, val in enumerate(df["word"]):
+    for i, val in df["word"].items():
         if pd.isna(val):
             continue  # Already checked by validate_no_blanks
 
@@ -371,6 +426,39 @@ def validate_unique_index_sub_index(
         )
 
     return None
+
+
+def validate_unique_untranscribed(
+    df: pd.DataFrame,
+    categorical_columns: list[str] | None = None,
+) -> ValidationError | None:
+    """
+    Check that untranscribed rows don't repeat a group (index + categorical
+    columns), since each one becomes sub_index 1 of its group.
+    """
+    cat_cols = categorical_columns or []
+    group_cols = ["index"] + cat_cols
+    keys = df[group_cols].astype(str).agg("_".join, axis=1) if len(df) else pd.Series(dtype=str)
+    duplicated = keys[keys.duplicated(keep=False)]
+
+    if len(duplicated) == 0:
+        return None
+
+    details = []
+    for key in duplicated.unique()[:10]:
+        row_nums = [str(r + 2) for r in duplicated[duplicated == key].index]
+        details.append(f"Key '{key}' appears in rows: {', '.join(row_nums)}")
+
+    col_desc = " + ".join(group_cols)
+    return ValidationError(
+        error_type="duplicate_untranscribed",
+        message=f"Duplicate {col_desc} combinations among rows with no entry or word",
+        details=details,
+        recommendation=(
+            f"Each {col_desc} combination can appear only once among untranscribed rows. "
+            "Please remove the extra rows in your Excel file, then clear the database and re-upload."
+        ),
+    )
 
 
 def validate_and_fix_sub_index_sequences(
@@ -468,6 +556,39 @@ def validate_and_fix_sub_index_sequences(
     return df, None, auto_fixes
 
 
+def archive_column_name(existing_columns, today: datetime.date | None = None) -> str:
+    """'entry_before_YYYY-MM-DD' for today, with '_2', '_3', ... appended if
+    that name is already taken by an earlier run the same day."""
+    base = f"entry_before_{(today or datetime.date.today()).isoformat()}"
+    name, n = base, 2
+    while name in existing_columns:
+        name, n = f"{base}_{n}", n + 1
+    return name
+
+
+def _archive_previous_entries(
+    df: pd.DataFrame,
+    today: datetime.date | None = None,
+) -> tuple[pd.DataFrame, str | None, int]:
+    """Keep the pre-update entries (held in _PREVIOUS_ENTRY) as a dated column
+    just before 'entry' if any entry changed; otherwise drop them.
+
+    Returns (df, archive column name or None, number of rows whose entry changed).
+    """
+    def normalized(series):
+        return series.fillna("").astype(str).str.strip()
+
+    changed_rows = int((normalized(df[_PREVIOUS_ENTRY]) != normalized(df["entry"])).sum())
+
+    if changed_rows == 0:
+        return df.drop(columns=[_PREVIOUS_ENTRY]), None, 0
+
+    name = archive_column_name(df.columns, today)
+    previous = df.pop(_PREVIOUS_ENTRY)
+    df.insert(df.columns.get_loc("entry"), name, previous)
+    return df, name, changed_rows
+
+
 def reconstruct_entries(
     df: pd.DataFrame,
     categorical_columns: list[str] | None = None,
@@ -475,7 +596,8 @@ def reconstruct_entries(
     """
     Reconstruct entries from words.
 
-    - Renames 'entry' to 'entry_orig'
+    - Moves the current 'entry' to a temporary column (_PREVIOUS_ENTRY) so
+      check_database_formatting can decide whether to archive it
     - Creates new 'entry' by joining words in sub_index order per group
 
     Args:
@@ -483,13 +605,12 @@ def reconstruct_entries(
         categorical_columns: Optional list of additional categorical columns to group by
 
     Returns:
-        DataFrame with entry_orig and new entry columns
+        DataFrame with the previous entries (temporary column) and new entry column
     """
     df = df.copy()
     cat_cols = categorical_columns or []
 
-    # Rename entry to entry_orig
-    df = df.rename(columns={"entry": "entry_orig"})
+    df = df.rename(columns={"entry": _PREVIOUS_ENTRY})
 
     # Build group columns and sort columns
     group_cols = ["index"] + cat_cols
@@ -520,6 +641,7 @@ def check_database_formatting(
     df: pd.DataFrame,
     column_mapping: dict[str, str] | None = None,
     categorical_columns: list[str] | None = None,
+    today: datetime.date | None = None,
 ) -> FormattingCheckResult:
     """
     Main function to check database formatting and reconstruct entries.
@@ -533,6 +655,7 @@ def check_database_formatting(
                        If provided, columns will be renamed accordingly.
         categorical_columns: Optional list of additional categorical columns (e.g., 'speaker', 'token')
                            to include in uniqueness checks and grouping.
+        today: Date used in the archive column name (default: today's date)
 
     Returns:
         FormattingCheckResult with success status, processed DataFrame, and any errors.
@@ -545,13 +668,43 @@ def check_database_formatting(
     if column_mapping:
         df = normalize_dataframe_columns(df, column_mapping)
 
+    # Colons in entries, words or segments may or may not be length marks, so
+    # the user must resolve them
+    colon_locations = find_colons(df, ["entry", "word"] + SEGMENT_COLUMNS)
+    if colon_locations:
+        return FormattingCheckResult(success=False, error=ValidationError(
+            error_type="colons",
+            message=colon_error_message(colon_locations),
+            recommendation=COLON_RECOMMENDATION,
+            colon_locations=colon_locations,
+        ))
+
+    # Convert lookalike/precomposed characters to Excelerant's forms. Done to
+    # 'entry' too, so a change of storage form alone doesn't count as a
+    # changed entry when deciding whether to archive.
+    characters_converted = Counter()
+    for col in ["entry", "word"] + SEGMENT_COLUMNS:
+        if col in df.columns:
+            df[col], col_counts = convert_precomposed_column(df[col])
+            characters_converted.update(col_counts)
+
+    # Set aside untranscribed rows; they skip validation and reconstruction
+    untranscribed_mask = find_untranscribed_rows(df, categorical_columns=cat_cols)
+
     # Step 2: Validate no blanks
-    error = validate_no_blanks(df)
+    error = validate_no_blanks(df[~untranscribed_mask])
     if error:
         return FormattingCheckResult(success=False, error=error)
 
-    # Step 3: Validate index integers
+    # Step 3: Validate index integers (all rows, including untranscribed)
     error = validate_index_integers(df)
+    if error:
+        return FormattingCheckResult(success=False, error=error)
+
+    df_untranscribed = df[untranscribed_mask].copy()
+    df = df[~untranscribed_mask]
+
+    error = validate_unique_untranscribed(df_untranscribed, categorical_columns=cat_cols)
     if error:
         return FormattingCheckResult(success=False, error=error)
 
@@ -584,6 +737,21 @@ def check_database_formatting(
     # Step 9: Reconstruct entries from words (per group)
     df = reconstruct_entries(df, categorical_columns=cat_cols)
 
+    # Add untranscribed rows back: blank entry/word, sub_index 1
+    if len(df_untranscribed) > 0:
+        df_untranscribed = df_untranscribed.rename(columns={"entry": _PREVIOUS_ENTRY})
+        df_untranscribed["entry"] = ""
+        df_untranscribed["word"] = ""
+        df_untranscribed["index"] = df_untranscribed["index"].astype(int)
+        df_untranscribed["sub_index"] = 1
+        sort_cols = ["index"] + cat_cols + ["sub_index"]
+        df = (pd.concat([df, df_untranscribed], ignore_index=True)
+              .sort_values(sort_cols, kind="stable")
+              .reset_index(drop=True))
+
+    # Archive the previous entries as a dated column, if anything changed
+    df, archive_column, entries_changed = _archive_previous_entries(df, today)
+
     # Build summary
     num_indices = df["index"].nunique()
     num_rows = len(df)
@@ -591,6 +759,10 @@ def check_database_formatting(
     summary = {
         "total_rows": num_rows,
         "unique_indices": num_indices,
+        "untranscribed_rows": len(df_untranscribed),
+        "entries_changed": entries_changed,
+        "characters_converted": dict(characters_converted.most_common()),
+        "archive_column": archive_column,
         "auto_fixes_count": len(auto_fixes),
         "categorical_columns": cat_cols,
     }

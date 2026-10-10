@@ -87,7 +87,7 @@ def render_script_output(script: str, *, filename: str, key: str):
             data=script.encode("utf-8"),
             file_name=filename,
             mime="application/xml",
-            use_container_width=True,
+            width="stretch",
             key=f"dl_{key}",
         )
 
@@ -235,12 +235,12 @@ def screen_create_data_collection_script():
         generate_clicked = st.button(
             "Generate Script",
             type="primary",
-            use_container_width=True,
+            width="stretch",
         )
 
         st.markdown("")
 
-        if st.button("Back to Main Menu", use_container_width=True):
+        if st.button("Back to Main Menu", width="stretch"):
             go_back_to_menu()
 
     with output_col:
@@ -269,7 +269,7 @@ def screen_create_data_collection_script():
 
                 st.markdown("---")
 
-                if st.button("Clear Database & Start Over", type="primary", use_container_width=True):
+                if st.button("Clear Database & Start Over", type="primary", width="stretch"):
                     if "_generated_script" in st.session_state:
                         del st.session_state._generated_script
                     st.session_state.database = None
@@ -281,6 +281,7 @@ def screen_create_data_collection_script():
             else:
                 # Store result in session state and rerun to scroll to top
                 st.session_state._generated_script = result.script
+                st.session_state._script_skipped_indices = result.skipped_indices
                 st.session_state._scroll_to_top = True
                 st.rerun()
 
@@ -288,8 +289,17 @@ def screen_create_data_collection_script():
         if "_generated_script" in st.session_state and st.session_state._generated_script:
             st.success("Script generated successfully!")
 
-            if st.button("Return to Main Menu", use_container_width=True):
+            skipped = st.session_state.get("_script_skipped_indices") or []
+            if skipped:
+                st.warning(
+                    f"**{len(skipped):,} rows were left out** because their primary gloss is blank."
+                )
+                st.caption("Index values of the rows left out (use the copy button):")
+                st.code(", ".join(skipped), language=None, wrap_lines=True)
+
+            if st.button("Return to Main Menu", width="stretch"):
                 del st.session_state._generated_script
+                st.session_state.pop("_script_skipped_indices", None)
                 go_back_to_menu()
 
             render_script_output(

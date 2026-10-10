@@ -85,7 +85,7 @@ def screen_add_audio_links():
                 data=get_windows_batch_file(),
                 file_name="File List Generator.bat",
                 mime="application/octet-stream",
-                use_container_width=True,
+                width="stretch",
             )
         else:
             st.markdown(
@@ -107,7 +107,7 @@ def screen_add_audio_links():
                 data=get_mac_shell_script(),
                 file_name="File List Generator.sh",
                 mime="application/x-sh",
-                use_container_width=True,
+                width="stretch",
             )
 
         # === SECTION 3: Upload File List ===
@@ -223,7 +223,7 @@ def screen_add_audio_links():
                 generate_clicked = st.button(
                     "Add Audio Links",
                     type="primary",
-                    use_container_width=True,
+                    width="stretch",
                     disabled=not can_generate,
                 )
 
@@ -241,7 +241,7 @@ def screen_add_audio_links():
                     st.rerun()
 
         st.markdown("---")
-        if st.button("Back to Main Menu", use_container_width=True):
+        if st.button("Back to Main Menu", width="stretch"):
             # Clean up session state
             for key in ["_audio_file_paths", "_folder_analysis", "_filename_analysis", "_audio_link_result", "_audio_link_platform", "_audio_generate_params"]:
                 if key in st.session_state:
@@ -281,7 +281,7 @@ def screen_add_audio_links():
 
                 st.markdown("---")
 
-                if st.button("Clear Database & Start Over", type="primary", use_container_width=True):
+                if st.button("Clear Database & Start Over", type="primary", width="stretch"):
                     for key in ["_audio_file_paths", "_folder_analysis", "_filename_analysis", "_audio_link_result", "_audio_link_platform", "_audio_generate_params"]:
                         if key in st.session_state:
                             del st.session_state[key]
@@ -320,11 +320,11 @@ def screen_add_audio_links():
                     file_name="database_with_audio.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     type="primary",
-                    use_container_width=True,
+                    width="stretch",
                 )
 
             with btn_col2:
-                if st.button("Return to Main Menu", use_container_width=True, key="return_after_audio"):
+                if st.button("Return to Main Menu", width="stretch", key="return_after_audio"):
                     for key in ["_audio_file_paths", "_folder_analysis", "_filename_analysis", "_audio_link_result", "_audio_link_platform", "_audio_generate_params"]:
                         if key in st.session_state:
                             del st.session_state[key]
@@ -354,9 +354,9 @@ def screen_add_audio_links():
             available_cols = [c for c in preview_cols if c in result.df.columns]
 
             if available_cols:
-                st.dataframe(result.df[available_cols].head(15), use_container_width=True)
+                st.dataframe(result.df[available_cols].head(15), width="stretch")
             else:
-                st.dataframe(result.df.head(15), use_container_width=True)
+                st.dataframe(result.df.head(15), width="stretch")
 
         # Show analysis info if file uploaded but not yet processed
         elif "_folder_analysis" in st.session_state:
@@ -417,7 +417,7 @@ def screen_add_audio_links():
                 'gloss': ['dog', 'wolf', 'cat'],
                 'entry': ['maː', 'paː', 'kaː']
             })
-            st.dataframe(example_before, use_container_width=True, hide_index=True)
+            st.dataframe(example_before, width="stretch", hide_index=True)
 
             st.markdown("**Example (after):**")
             example_after = pd.DataFrame({
@@ -427,4 +427,4 @@ def screen_add_audio_links():
                 'link': ['listen', 'listen', 'listen'],
                 'path': ['C:\\audio\\1.wav', 'C:\\audio\\2.wav', 'C:\\audio\\3.wav']
             })
-            st.dataframe(example_after, use_container_width=True, hide_index=True)
+            st.dataframe(example_after, width="stretch", hide_index=True)

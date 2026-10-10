@@ -15,11 +15,13 @@ class Screen:
     MAIN_MENU = "main_menu"
     MAIN_MENU_MANAGE = "main_menu_manage"
     MAIN_MENU_PHONOLOGICAL = "main_menu_phonological"
-    MAIN_MENU_ORTHOGRAPHY = "main_menu_orthography"
+    MAIN_MENU_CARD_SORTING = "main_menu_card_sorting"
     MAIN_MENU_ACOUSTIC = "main_menu_acoustic"
     MAIN_MENU_COLLECT = "main_menu_collect"
+    PHONOLOGY_HUB = "phonology_hub"
     ORTHOGRAPHY_HUB = "orthography_hub"
     COLLECT_LEXICAL_DATA_HUB = "collect_lexical_data_hub"
+    MANAGE_DATABASE_HUB = "manage_database_hub"
     COLLECT_PLATFORM = "collect_platform"
     STANDARD_WORD_LISTS = "standard_word_lists"
     SCRIPT_CONVERTER = "script_converter"
@@ -51,7 +53,10 @@ def init_session_state():
         "database_sheet_name": None,
         # Main menu state
         "selected_task": None,
-        # Analysis mode: "collect", "manage", "phonological", "orthography", or "acoustic"
+        # Analysis mode: "collect", "manage", "phonological", "orthography",
+        # "card_sorting", or "acoustic". "phonological" and "orthography" are
+        # set by their welcome-screen hubs; "card_sorting" by either hub's
+        # Participatory Card Sorting button.
         "analysis_mode": None,
         # Collect Data: "standard" (bundled word list tool) or "custom" (upload)
         "collect_source": None,
@@ -78,8 +83,8 @@ def go_back_to_menu():
     mode = st.session_state.get("analysis_mode", "phonological")
     if mode == "acoustic":
         navigate_to(Screen.MAIN_MENU_ACOUSTIC)
-    elif mode == "orthography":
-        navigate_to(Screen.MAIN_MENU_ORTHOGRAPHY)
+    elif mode == "card_sorting":
+        navigate_to(Screen.MAIN_MENU_CARD_SORTING)
     elif mode == "collect":
         navigate_to(Screen.MAIN_MENU_COLLECT)
     elif mode == "manage":

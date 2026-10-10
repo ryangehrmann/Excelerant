@@ -5,11 +5,14 @@ Upload Database Task
 Handles loading and validating lexical database spreadsheets.
 
 Required columns: index, entry, gloss
-- index: must contain integers
-- entry: must contain non-empty strings
-- gloss: must contain non-empty strings
+- index: must contain integers (no blanks)
+- entry: must contain strings; blank cells are allowed (untranscribed items)
+- gloss: must contain strings; blank cells are allowed (unglossed items)
 
-The "Collect Lexical Data" flow runs before transcription exists, so it uses a
+Blank entry/gloss cells don't block the upload. They're reported as warnings,
+with the affected index values, so the user can follow up on them later.
+
+The "Collect Data" flow runs before transcription exists, so it uses a
 looser set (index + gloss only) - see COLLECT_REQUIRED_COLUMNS.
 """
 
@@ -29,6 +32,8 @@ class ValidationResult:
     """Result of database validation."""
     valid: bool
     errors: dict[str, list] = field(default_factory=dict)
+    # Column name -> index values of rows whose cell in that column is blank
+    blank_indices: dict[str, list[str]] = field(default_factory=dict)
 
 
 @dataclass 
@@ -84,7 +89,10 @@ def load_sheet(excel_file, sheet_name: str, required_columns: list[str] | None =
     """
     required_columns = required_columns or REQUIRED_COLUMNS
     try:
-        df = pd.read_excel(excel_file, sheet_name=sheet_name)
+        # Only truly empty cells count as missing. pandas' defaults would also
+        # turn strings like "null", "nan", "NA", "None" into NaN, but those can
+        # be legitimate glosses or entries in a lexical database.
+        df = pd.read_excel(excel_file, sheet_name=sheet_name, keep_default_na=False, na_values=[""])
 
         # Strip whitespace from all column names
         df.columns = [col.strip() if isinstance(col, str) else col for col in df.columns]
@@ -105,24 +113,38 @@ def load_sheet(excel_file, sheet_name: str, required_columns: list[str] | None =
         return SheetLoadResult(success=False, error=str(e))
 
 
+def format_index_value(val) -> str:
+    """Render an index cell as text, dropping the '.0' pandas adds to whole numbers."""
+    if isinstance(val, float) and val.is_integer():
+        return str(int(val))
+    return str(val)
+
+
+def is_blank(val) -> bool:
+    """True for NaN/None cells and strings that are empty or only whitespace."""
+    return pd.isna(val) or (isinstance(val, str) and val.strip() == "")
+
+
 def validate_database(df: pd.DataFrame, required_columns: list[str] | None = None) -> ValidationResult:
     """
     Validate the database contents.
 
     Checks (only for columns in required_columns):
-    - 'index' column: all values must be integers
-    - 'entry' column: all values must be non-empty strings
-    - 'gloss' column: all values must be non-empty strings
+    - 'index' column: all values must be integers (blanks are errors)
+    - 'entry' and 'gloss' columns: non-blank values must be strings; blank
+      cells are allowed and recorded in blank_indices
 
     Args:
         df: DataFrame to validate
         required_columns: Which columns to enforce (default: index, entry, gloss)
 
     Returns:
-        ValidationResult with valid=True/False and dict of errors by column.
+        ValidationResult with valid=True/False, dict of errors by column, and
+        dict of blank-cell index values by column.
     """
     required_columns = required_columns or REQUIRED_COLUMNS
     errors = {}
+    blank_indices = {}
 
     # Validate 'index' column - must be integers
     if "index" in required_columns and "index" in df.columns:
@@ -132,39 +154,33 @@ def validate_database(df: pd.DataFrame, required_columns: list[str] | None = Non
                 invalid_indices.append(f"Row {i+1}: empty")
             elif not isinstance(val, (int, float)) or (isinstance(val, float) and not val.is_integer()):
                 invalid_indices.append(f"Row {i+1}: '{val}'")
-        
+
         if invalid_indices:
             errors["index"] = invalid_indices
-    
-    # Validate 'entry' column - must be non-empty strings
-    if "entry" in required_columns and "entry" in df.columns:
-        invalid_entries = []
-        for i, val in enumerate(df["entry"]):
-            if pd.isna(val):
-                invalid_entries.append(f"Row {i+1}: empty")
+
+    # Validate 'entry' and 'gloss' columns - strings, blanks allowed
+    for col in ("entry", "gloss"):
+        if col not in required_columns or col not in df.columns:
+            continue
+
+        invalid_values = []
+        blanks = []
+        for i, val in enumerate(df[col]):
+            if is_blank(val):
+                if "index" in df.columns:
+                    blanks.append(format_index_value(df["index"].iloc[i]))
+                else:
+                    blanks.append(f"row {i+1}")
             elif not isinstance(val, str):
-                invalid_entries.append(f"Row {i+1}: '{val}' (type: {type(val).__name__})")
-            elif val.strip() == "":
-                invalid_entries.append(f"Row {i+1}: empty string")
-        
-        if invalid_entries:
-            errors["entry"] = invalid_entries
-    
-    # Validate 'gloss' column - must be non-empty strings
-    if "gloss" in required_columns and "gloss" in df.columns:
-        invalid_glosses = []
-        for i, val in enumerate(df["gloss"]):
-            if pd.isna(val):
-                invalid_glosses.append(f"Row {i+1}: empty")
-            elif not isinstance(val, str):
-                invalid_glosses.append(f"Row {i+1}: '{val}' (type: {type(val).__name__})")
-            elif val.strip() == "":
-                invalid_glosses.append(f"Row {i+1}: empty string")
-        
-        if invalid_glosses:
-            errors["gloss"] = invalid_glosses
-    
+                invalid_values.append(f"Row {i+1}: '{val}' (type: {type(val).__name__})")
+
+        if invalid_values:
+            errors[col] = invalid_values
+        if blanks:
+            blank_indices[col] = blanks
+
     return ValidationResult(
         valid=len(errors) == 0,
-        errors=errors
+        errors=errors,
+        blank_indices=blank_indices,
     )

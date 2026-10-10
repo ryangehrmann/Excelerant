@@ -5,13 +5,17 @@ Explode Entries Task
 Splits multi-word entries into one-word-per-row, adding 'sub_index' and 'word' columns.
 
 Processing pipeline:
-1. Validate entry column exists and has no NaN
+1. Validate entry column exists; set aside rows with a blank entry
 2. Clean entry column (normalize whitespace, remove punctuation)
 3. Preserve existing 'word' and 'sub_index' columns (rename to _old)
 4. Build group key from index + categorical columns
 5. Split entries by spaces -> 'word' column
 6. Assign sub_index per group
 7. Reorder columns and return result
+
+Rows with a blank entry (untranscribed items) are carried through with a blank
+'word' and sub_index 1, so they stay in the database and keep a unique
+index.sub_index ID.
 """
 
 import re
@@ -21,6 +25,9 @@ import unicodedata
 from collections import Counter
 from dataclasses import dataclass, field
 
+from tasks.colon_check import colon_error_message, find_colons
+from tasks.segment_words import convert_precomposed_column
+
 
 @dataclass
 class ExplosionResult:
@@ -28,6 +35,8 @@ class ExplosionResult:
     success: bool
     df: pd.DataFrame | None = None
     error: str | None = None
+    # Column -> row IDs of cells containing colons (set when that's the error)
+    colon_locations: dict[str, list[str]] = field(default_factory=dict)
     cleaning_report: dict = field(default_factory=dict)
     summary: dict = field(default_factory=dict)
 
@@ -57,6 +66,9 @@ def clean_transcription_column(df: pd.DataFrame, col: str) -> tuple[pd.DataFrame
 
     # Convert to string
     df[col] = df[col].astype(str)
+
+    # Convert precomposed/decomposed characters to the IPA inventory's form
+    df[col], report["precomposed_converted"] = convert_precomposed_column(df[col])
 
     # Normalize Unicode whitespace to regular space
     unicode_spaces = [
@@ -98,6 +110,19 @@ def clean_transcription_column(df: pd.DataFrame, col: str) -> tuple[pd.DataFrame
         df[f'{col}_orig'] = original
 
     return df, report
+
+
+# _space_count for untranscribed rows, so they sort after real words in a group
+UNTRANSCRIBED_SORT_LAST = 10**9
+
+
+def _group_key(df: pd.DataFrame, cat_cols: list[str]) -> pd.Series:
+    """Build a string key from index + any categorical columns present in df."""
+    key = df['index'].astype(str)
+    for col in cat_cols:
+        if col in df.columns:
+            key = key + '_' + df[col].astype(str)
+    return key
 
 
 def preserve_existing_column(df: pd.DataFrame, col_name: str) -> pd.DataFrame:
@@ -161,14 +186,27 @@ def explode_entries(
             error=f"Entry column '{entry_col}' not found in database.",
         )
 
-    # Check for NaN in entry column
-    nan_count = df[entry_col].isna().sum()
-    if nan_count > 0:
+    # Colons may or may not be length marks, so the user must resolve them
+    # (cleaning would otherwise delete them as punctuation)
+    colon_locations = find_colons(df, [entry_col])
+    if colon_locations:
         return ExplosionResult(
             success=False,
-            error=f"Found {nan_count} empty values in '{entry_col}' column. "
-                  f"All entries must have values.",
+            error=colon_error_message(colon_locations),
+            colon_locations=colon_locations,
         )
+
+    # Preserve existing 'word' and 'sub_index' columns before splitting off
+    # untranscribed rows, so both parts end up with the same columns
+    df = preserve_existing_column(df, 'word')
+    df = preserve_existing_column(df, 'sub_index')
+
+    rows_before = len(df)
+
+    # Set aside untranscribed rows (blank entry); they skip cleaning/splitting
+    blank_mask = df[entry_col].isna() | (df[entry_col].astype(str).str.strip() == '')
+    df_untranscribed = df[blank_mask].copy()
+    df = df[~blank_mask].copy()
 
     # Step 2: Clean entry column
     df, cleaning_report = clean_transcription_column(df, entry_col)
@@ -182,21 +220,9 @@ def explode_entries(
                   f"Please check your data for entries that are only punctuation.",
         )
 
-    # Step 3: Preserve existing 'word' and 'sub_index' columns
-    df = preserve_existing_column(df, 'word')
-    df = preserve_existing_column(df, 'sub_index')
-
-    rows_before = len(df)
-
     # Step 4: Build group key from index + categorical columns
-    group_parts = [df['index'].astype(str)]
-    for col in cat_cols:
-        if col in df.columns:
-            group_parts.append(df[col].astype(str))
-
-    df['_group_key'] = group_parts[0]
-    for part in group_parts[1:]:
-        df['_group_key'] = df['_group_key'] + '_' + part
+    df['_group_key'] = _group_key(df, cat_cols)
+    df_untranscribed['_group_key'] = _group_key(df_untranscribed, cat_cols)
 
     # Step 5: Count spaces per entry (for sub_index ordering)
     df['_space_count'] = df[entry_col].str.count(' ')
@@ -207,6 +233,13 @@ def explode_entries(
           .explode('word')
           .assign(word=lambda x: x['word'].fillna(''))
           .reset_index(drop=True))
+
+    # Add untranscribed rows back with a blank word, ordered after any words
+    # that share their group
+    if len(df_untranscribed) > 0:
+        df_untranscribed['word'] = ''
+        df_untranscribed['_space_count'] = UNTRANSCRIBED_SORT_LAST
+        df = pd.concat([df, df_untranscribed], ignore_index=True)
 
     # Sort by group key and space count for proper ordering
     df = df.sort_values(['_group_key', '_space_count'], ascending=True)
@@ -222,13 +255,15 @@ def explode_entries(
     df = df.drop(columns=['_group_key', '_space_count'])
 
     rows_after = len(df)
-    entries_processed = rows_before
-    words_created = rows_after
+    untranscribed_rows = len(df_untranscribed)
+    entries_processed = rows_before - untranscribed_rows
+    words_created = rows_after - untranscribed_rows
 
     # Build summary
     summary = {
         "entries_processed": entries_processed,
         "words_created": words_created,
+        "untranscribed_rows": untranscribed_rows,
         "rows_before": rows_before,
         "rows_after": rows_after,
     }
